@@ -6,5 +6,31 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.7",
     "sqlalchemy>=2.0.51",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle error
+    "W", # pycodestyle warning
+    "F", # pyflakes
+    "I", # isort
+    "B", # flake8-bugbear
+    "UP", # pyupgrade
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 프로젝트를 설치하지 않고 실행하므로 루트를 import 경로에 넣어 app 패키지를 찾게 한다.
+pythonpath = ["."]
