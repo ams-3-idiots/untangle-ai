@@ -3,10 +3,11 @@
 ## 0. 목차
 
 1. [프로젝트 구조](#1-프로젝트-구조) — 레이어 역할과 의존 방향, 이름 규칙
-2. [린터 및 포매터](#2-린터-및-포매터) — Ruff 실행과 검증 기준
-3. [Git Branch](#3-git-branch) — 브랜치 이름과 분기 기준
-4. [Git Commit](#4-git-commit) — 접두어와 메시지 작성
-5. [GitHub PR](#5-github-pr) — 제목·본문 구성
+2. [테스트 코드](#2-테스트-코드) — TestClient와 pytest를 사용한 테스트 작성
+3. [린터 및 포매터](#3-린터-및-포매터) — Ruff 실행과 검증 기준
+4. [Git Branch](#4-git-branch) — 브랜치 이름과 분기 기준
+5. [Git Commit](#5-git-commit) — 접두어와 메시지 작성, 커밋 전 사용자 검토
+6. [GitHub PR](#6-github-pr) — 제목·본문 구성
 
 ## 1. 프로젝트 구조
 
@@ -22,6 +23,7 @@
 | `app/schemas/` | 요청·응답 형식 |
 | `app/exceptions/` | 도메인 예외와 HTTP 오류 변환 |
 | `app/db/` | DB 연결과 세션 |
+| `tests/` | API와 비즈니스 로직 테스트 |
 
 ### 1.2 의존 방향
 
@@ -136,7 +138,102 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:  # 동기 세�
 
 로직이 거의 없어도 5번에서 4번을 건너뛰지 않는다. 기존 레이어로 설명되지 않는 코드가 생기면 새 디렉토리를 만들기 전에 사용자에게 확인한다.
 
-## 2. 린터 및 포매터
+## 2. 테스트 코드
+
+테스트는 기능이 의도한 대로 동작하는지 자동으로 확인하는 코드다. FastAPI의 `TestClient`로 API에 요청을 보내고, pytest의 `assert`로 실제 결과가 기대한 결과와 같은지 확인한다.
+
+### 2.1 테스트 파일 구조와 이름
+
+테스트는 프로젝트 루트의 `tests/`에 두고, 가능한 한 `app/`의 구조를 따라 배치한다.
+
+```text
+tests/
+├── conftest.py                 # 여러 테스트가 함께 사용하는 fixture
+├── api/
+│   └── v1/
+│       └── test_user.py        # 사용자 엔드포인트 테스트
+└── services/
+    └── test_user_service.py    # 사용자 비즈니스 로직 테스트
+```
+
+- 테스트 파일 이름은 `test_`로 시작한다: `test_user.py`.
+- 테스트 함수 이름도 `test_`로 시작하고, 확인하려는 동작이 드러나게 쓴다: `test_create_user_returns_201`.
+- 엔드포인트의 요청·응답은 `tests/api/`에서, 서비스의 업무 규칙은 `tests/services/`에서 테스트한다.
+- 서로 다른 기능을 하나의 테스트 함수에서 한꺼번에 확인하지 않는다.
+
+### 2.2 첫 API 테스트 작성
+
+여러 테스트에서 사용할 `TestClient`는 fixture로 만든다. fixture는 테스트 실행에 필요한 준비 작업을 대신하는 함수이며, 테스트 함수의 인자로 받아 사용한다.
+
+```python
+# tests/conftest.py
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+@pytest.fixture
+def client():
+    with TestClient(app) as test_client:
+        yield test_client
+```
+
+테스트 함수는 **준비 → 실행 → 확인** 순서로 읽히게 작성한다. 아래 코드는 `/health` 엔드포인트가 정상 응답하는지 확인하는 예시다.
+
+```python
+# tests/api/v1/test_health.py
+from fastapi.testclient import TestClient
+
+
+def test_health_check_returns_ok(client: TestClient):
+    # 준비: 이 예시에는 별도의 요청 데이터가 없다.
+
+    # 실행
+    response = client.get('/health')
+
+    # 확인
+    assert response.status_code == 200
+    assert response.json() == {'status': 'ok'}
+```
+
+`TestClient`를 사용하는 테스트 함수는 일반 `def`로 작성하고, 요청을 보낼 때 `await`를 사용하지 않는다. JSON 요청 본문은 `client.post('/users', json={...})`처럼 전달한다.
+
+### 2.3 테스트에서 확인할 것
+
+- API 테스트는 최소한 **HTTP 상태 코드**와 **응답 본문**을 확인한다.
+- 정상 요청 테스트를 먼저 작성하고, 잘못된 입력이나 존재하지 않는 데이터처럼 대표적인 실패 상황도 작성한다.
+- 한 테스트가 실패했을 때 원인을 바로 알 수 있도록 한 가지 동작만 확인한다.
+- ID나 생성 시각처럼 매번 달라지는 값은 고정값 전체와 비교하지 말고, 필요한 필드의 존재 여부와 타입을 확인한다.
+- 함수가 내부에서 어떤 함수를 호출했는지보다 사용자에게 보이는 요청·응답과 업무 규칙을 확인한다.
+
+### 2.4 데이터베이스를 사용하는 테스트
+
+- 개발 DB나 운영 DB에 연결하지 않고 테스트 전용 DB를 사용한다.
+- `get_db` 의존성을 테스트용 세션으로 교체하는 코드는 fixture에 둔다.
+- 각 테스트는 다른 테스트가 만든 데이터나 실행 순서에 의존하지 않아야 한다.
+- 테스트가 끝나면 트랜잭션을 롤백하거나 데이터를 삭제하고, `app.dependency_overrides`에 등록한 값도 제거한다.
+
+DB fixture가 필요해질 때는 `tests/conftest.py`에 한 번만 정의하고 각 테스트에서 재사용한다. 실제 DB 설정이 정해지기 전에는 임의의 연결 주소나 초기화 방식을 추가하지 않는다.
+
+### 2.5 테스트 실행
+
+전체 테스트를 실행한다.
+
+```bash
+uv run pytest
+```
+
+특정 파일이나 이름에 해당하는 테스트만 실행할 수도 있다.
+
+```bash
+uv run pytest tests/api/v1/test_user.py
+uv run pytest -k create_user
+```
+
+기능을 수정하는 동안에는 관련 테스트를 먼저 실행하고, 작업을 마치기 전에는 전체 테스트를 실행한다. 실패한 테스트를 삭제하거나 건너뛰는 대신 원인을 확인해 코드 또는 테스트를 수정한다.
+
+## 3. 린터 및 포매터
 
 - Python 코드의 린터와 포매터로 Ruff를 사용한다.
 - 코드 변경 후 `uv run ruff format .`으로 포맷을 적용한다.
@@ -144,7 +241,7 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:  # 동기 세�
 - 자동 수정이 필요한 경우 `uv run ruff check --fix .`을 실행한 뒤, `uv run ruff format .`과 `uv run ruff check .`을 다시 실행한다.
 - 린트 규칙을 무시하거나 검사 대상에서 제외하는 설정은 사용자 확인 없이 추가하지 않는다.
 
-## 3. Git Branch
+## 4. Git Branch
 
 ### 이름
 - `<구분>/<짧은-설명>` 형식.
@@ -155,7 +252,7 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:  # 동기 세�
 ### 분기 기준
 - 사용자가 따로 명시하지 않았다면 브랜치는 최신 `main`에서 분기한다.
 
-## 4. Git Commit
+## 5. Git Commit
 
 ### 제목
 - `접두어: <메시지>` 형식
@@ -224,21 +321,43 @@ chore: 의존성 및 Docker 빌드 설정 정리
 Dockerfile을 멀티스테이지로 나눠 런타임 이미지 크기를 줄이고 pyproject.toml과 uv.lock을 동기화한다.
 ```
 
+### 커밋 전 검토
 
-## 5. GitHub PR
+- **커밋을 생성하기 전에 커밋 제목과 본문을 사용자에게 보여주고 검토를 받는다.** 사용자가 승인하기 전에는 `git commit`을 실행하지 않는다.
+- 사용자가 수정을 요청하면 반영한 내용을 다시 보여주고 승인을 받은 뒤 커밋한다.
+- **한 번의 요청에서 커밋을 여러 개 만들 때도 예외 없이 적용한다.** 첫 커밋만 검토받고 나머지를 이어서 만들지 않는다.
+  - 커밋을 나눈 기준, 커밋별로 포함되는 파일, 각 커밋의 제목과 본문을 순서대로 한 번에 보여주고 검토를 받는다.
+  - 승인받은 내용 그대로, 보여준 순서대로 커밋을 생성한다.
+  - 검토 중 커밋 구성이 바뀌면 바뀐 전체 구성을 다시 보여주고 승인을 받는다.
+
+```
+커밋 2개로 나눠 만들려고 합니다. 검토 부탁드립니다.
+
+[1/2] app/models/user.py, app/schemas/user.py
+feat: 사용자 테이블과 요청·응답 스키마 추가
+
+`users` 테이블을 정의하고 생성·조회에 사용할 요청·응답 스키마를 추가한다.
+
+[2/2] app/api/v1/endpoints/user.py, app/services/user_service.py
+feat: 사용자 생성 API 엔드포인트 추가
+
+`POST /users`로 사용자를 생성하고 중복 이메일은 409로 응답한다.
+```
+
+## 6. GitHub PR
 
 - `gh` CLI를 사용하여 작업.
-### 5.1 제목
+### 6.1 제목
 - [`카테고리`] `한 줄 설명` 
 - `카테고리`: 어디를 변경했는지 또는 어떤 기능을 건드렸는지 등의 이번 작업에서 주로 다룬 것을 짧은 단어로 표현
 - `한 줄 설명`: 수행한 일을 간단하게 한 줄로 서술
 - `카테고리`가 목적어라면 `한 줄 설명`은 서술어
 
-### 5.2 본문
+### 6.2 본문
 - `목적`: 무엇을 달성하기 위해서 이 작업을 수행했는지 핵심만 두 줄 이하로 설명
 - `변경 사항`: **변경된 모든 내용을 적는 게 목표가 아니며 목적을 달성하기 위해 수정 또는 추가한 내용이 무엇인지 다른 사람이 알 수 있게 해야 한다.**
 
-### 5.3 예시
+### 6.3 예시
 ```
 제목: [문서 업로드] 업로드 API와 메타데이터 저장 추가
 
