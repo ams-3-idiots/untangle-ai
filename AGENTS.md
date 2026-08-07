@@ -4,7 +4,7 @@
 
 1. [프로젝트 구조](#1-프로젝트-구조) — 레이어 역할과 의존 방향, 이름 규칙
 2. [테스트 코드](#2-테스트-코드) — TestClient와 pytest를 사용한 테스트 작성
-3. [린터 및 포매터](#3-린터-및-포매터) — Ruff 실행과 검증 기준
+3. [Python 코드 스타일](#3-python-코드-스타일) — Docstring과 주석, Ruff 실행과 검증 기준
 4. [Git Branch](#4-git-branch) — 브랜치 이름과 분기 기준
 5. [Git Commit](#5-git-commit) — 접두어와 메시지 작성, 커밋 전 사용자 검토
 6. [GitHub PR](#6-github-pr) — 제목·본문 구성
@@ -56,8 +56,11 @@ db      : 엔진·세션 팩토리·세션 주입 의존성과 Base 를 제공.
   접속 정보는 설정에서 읽고 `db/session.py`에 하드코딩하지 않는다.
   `api/dependencies.py`에는 DB 외의 요청 단위 의존성(현재 사용자, 페이지네이션 등)만 둔다.
 
+`app/db/session.py`:
+
 ```python
-# app/db/session.py
+"""요청 단위 DB 세션의 생성과 정리 책임을 제공한다."""
+
 from collections.abc import Generator
 from typing import Annotated
 
@@ -65,7 +68,6 @@ from fastapi import Depends
 from sqlalchemy.orm import Session, sessionmaker
 
 
-# engine은 같은 파일에서 설정의 DB URL로 생성한다.
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
@@ -74,6 +76,7 @@ SessionLocal = sessionmaker(
 
 
 def get_db() -> Generator[Session, None, None]:
+    """요청 단위 DB 세션의 정리와 예외 롤백을 책임진다."""
     db = SessionLocal()
 
     try:
@@ -95,22 +98,30 @@ DbSession = Annotated[Session, Depends(get_db)]
   엔드포인트는 `models`를 직접 참조하지 않고 `services`가 반환한 DTO만 반환한다.
 - **엔드포인트 선언**: 동기 세션을 쓰므로 엔드포인트는 `def`로 선언한다.
 
+`services/user_service.py`:
+
 ```python
-# services/user_service.py
+"""사용자의 기본적인 crud 로직을 관리한다."""
+
+
 def create_user(db: Session, payload: UserCreate) -> UserRead:
+    """이메일 중복을 검사하고 새로운 사용자를 생성한다."""
     if user_repository.get_by_email(db, payload.email):
-        raise DuplicateEmailError(payload.email)  # exceptions에 정의된 도메인 예외
-    user = user_repository.create(
-        db, payload
-    )  # autoflush=False 이므로 repository 가 직접 flush
-    db.commit()  # 트랜잭션 경계는 service
+        raise DuplicateEmailError(payload.email)
+    user = user_repository.create(db, payload)
+    db.commit()
     return UserRead.model_validate(user, from_attributes=True)
 ```
 
+`api/v1/endpoints/user.py`:
+
 ```python
-# api/v1/endpoints/user.py
+"""사용자 API 엔드포인트를 제공한다."""
+
+
 @router.post("", response_model=UserRead, status_code=201)
-def create_user(payload: UserCreate, db: DbSession) -> UserRead:  # 동기 세션이므로 def
+def create_user(payload: UserCreate, db: DbSession) -> UserRead:
+    """사용자 생성 요청을 서비스에 전달한다."""
     return user_service.create_user(db, payload)
 ```
 
@@ -165,8 +176,11 @@ tests/
 
 여러 테스트에서 사용할 `TestClient`는 fixture로 만든다. fixture는 테스트 실행에 필요한 준비 작업을 대신하는 함수이며, 테스트 함수의 인자로 받아 사용한다.
 
+`tests/conftest.py`:
+
 ```python
-# tests/conftest.py
+"""API 테스트에서 공통으로 사용하는 fixture를 제공한다."""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -175,14 +189,18 @@ from app.main import app
 
 @pytest.fixture
 def client():
+    """애플리케이션을 호출하는 테스트 클라이언트를 제공한다."""
     with TestClient(app) as test_client:
         yield test_client
 ```
 
 테스트 함수는 **준비 → 실행 → 확인** 순서로 읽히게 작성한다. 아래 코드는 `/health` 엔드포인트가 정상 응답하는지 확인하는 예시다.
 
+`tests/api/v1/test_health.py`:
+
 ```python
-# tests/api/v1/test_health.py
+"""상태 확인 API의 요청과 응답을 검증한다."""
+
 from fastapi.testclient import TestClient
 
 
@@ -190,11 +208,11 @@ def test_health_check_returns_ok(client: TestClient):
     # 준비: 이 예시에는 별도의 요청 데이터가 없다.
 
     # 실행
-    response = client.get('/health')
+    response = client.get("/health")
 
     # 확인
     assert response.status_code == 200
-    assert response.json() == {'status': 'ok'}
+    assert response.json() == {"status": "ok"}
 ```
 
 `TestClient`를 사용하는 테스트 함수는 일반 `def`로 작성하고, 요청을 보낼 때 `await`를 사용하지 않는다. JSON 요청 본문은 `client.post('/users', json={...})`처럼 전달한다.
@@ -233,7 +251,17 @@ uv run pytest -k create_user
 
 기능을 수정하는 동안에는 관련 테스트를 먼저 실행하고, 작업을 마치기 전에는 전체 테스트를 실행한다. 실패한 테스트를 삭제하거나 건너뛰는 대신 원인을 확인해 코드 또는 테스트를 수정한다.
 
-## 3. 린터 및 포매터
+## 3. Python 코드 스타일
+
+### 3.1 Docstring과 주석
+
+- 직접 작성하는 Python 모듈은 파일의 책임과 존재 이유를 설명하는 모듈 docstring으로 시작한다. Docstring 본문은 두 줄 이하로 작성한다.
+- 모든 클래스, 함수, 메서드의 첫 문장에는 역할이나 존재 목적을 설명하는 docstring을 작성한다. Docstring 본문은 두 줄 이하로 작성하며, **코드에서 이미 명확한 동작을 그대로 반복하지 않는다.**
+- 코드 중간의 설명용 `#` 주석은 원칙적으로 작성하지 않는다.
+- **코드만으로 파악하기 어려운 제약, 설계 결정, 예외 처리 또는 우회 방식의 이유를 협업자에게 알려야 할 때만 `#` 주석을 허용한다. 이때 코드가 무엇을 하는지가 아니라 왜 그렇게 작성했는지를 설명한다.**
+- 자동 생성 파일과 내용이 없는 `__init__.py`는 모듈 docstring 작성 대상에서 제외한다.
+
+### 3.2 린터 및 포매터
 
 - Python 코드의 린터와 포매터로 Ruff를 사용한다.
 - 코드 변경 후 `uv run ruff format .`으로 포맷을 적용한다.
@@ -325,7 +353,7 @@ Dockerfile을 멀티스테이지로 나눠 런타임 이미지 크기를 줄이�
 
 - **커밋을 생성하기 전에 커밋 제목과 본문을 사용자에게 보여주고 검토를 받는다.** 사용자가 승인하기 전에는 `git commit`을 실행하지 않는다.
 - 사용자가 수정을 요청하면 반영한 내용을 다시 보여주고 승인을 받은 뒤 커밋한다.
-- **한 번의 요청에서 커밋을 여러 개 만들 때도 예외 없이 적용한다.** 첫 커밋만 검토받고 나머지를 이어서 만들지 않는다.
+- **한 번의 요청에서 커밋을 여러 개 만들 때도 예외 없이 적용한다.**
   - 커밋을 나눈 기준, 커밋별로 포함되는 파일, 각 커밋의 제목과 본문을 순서대로 한 번에 보여주고 검토를 받는다.
   - 승인받은 내용 그대로, 보여준 순서대로 커밋을 생성한다.
   - 검토 중 커밋 구성이 바뀌면 바뀐 전체 구성을 다시 보여주고 승인을 받는다.
