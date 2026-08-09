@@ -5,7 +5,7 @@
 1. [프로젝트 구조](#1-프로젝트-구조) — 레이어 역할과 의존 방향, 이름 규칙
 2. [테스트 코드](#2-테스트-코드) — TestClient와 pytest를 사용한 테스트 작성
 3. [Python 코드 스타일](#3-python-코드-스타일) — Docstring과 주석, Ruff 실행과 검증 기준
-4. [Git Branch](#4-git-branch) — 브랜치 이름과 분기 기준
+4. [Git Branch](#4-git-branch) — 브랜치 구분, 이슈 문서와 짝을 이루는 이름, 하위 브랜치와 PR 대상
 5. [Git Commit](#5-git-commit) — 접두어와 메시지 작성, 커밋 전 사용자 검토
 6. [GitHub PR](#6-github-pr) — 제목·본문 구성
 
@@ -271,14 +271,105 @@ uv run pytest -k create_user
 
 ## 4. Git Branch
 
-### 이름
-- `<구분>/<짧은-설명>` 형식.
-  - 브랜치 `<구분>/<짧은-설명>`은 영어로 작성
-  - 구분: `feat`, `fix`, `docs`, `refactor`, `chore`
-  - 예: `feat/document-upload-api`, `fix/token-refresh-race`, `refactor/db-session-scope`
+### 4.1 구분
 
-### 분기 기준
+| 구분 | 사용 | 예 |
+| --- | --- | --- |
+| `feature` | 기능 추가·변경 | `feature/document-upload-api` |
+| `bugfix` | 버그 수정 | `bugfix/token-refresh-race` |
+| `hotfix` | 바로 반영해야 하는 긴급 수정 | `hotfix/security-patch` |
+| `release` | 릴리스 준비 | `release/v1.2.0` |
+| `chore` | 의존성·설정·빌드·문서·구조 개선 등 그 외 | `chore/update-dependencies` |
+
+- 브랜치 구분은 5번의 커밋 접두어와 별개 체계다.
+  같은 값을 쓰려고 맞추지 않는다.
+  예를 들어 `chore/split-user-service` 브랜치의 커밋 제목은 `refactor: ...`가 된다.
+
+### 4.2 이름
+
+- `<구분>/<짧은-설명>` 형식이며 영어 소문자와 하이픈으로 작성한다.
+- `release`만 `release/<버전>` 형식을 쓴다.
+- 이슈 문서가 있는 작업은 4.3의 규칙을 따른다.
+
+### 4.3 이슈 문서와 브랜치
+
+`docs/issues/`는 프로젝트가 어떻게 변경되었는지를 기록하는 이슈 문서를 모아둔다.
+이슈 문서는 유형별 하위 폴더에 두며, 폴더 이름은 4.1의 브랜치 구분과 같다.
+
+```text
+docs/issues/
+├── feature/
+│   ├── 01-ai-api.md
+│   └── 02-agent-runner.md
+├── bugfix/
+│   └── 01-token-refresh-race.md
+├── hotfix/
+└── chore/
+```
+
+- 이슈 파일 이름은 `<번호>-<짧은-설명>.md` 형식이고 영어로 작성한다.
+- 번호는 유형 폴더마다 `01`부터 독립적으로 매긴다.
+  다른 유형 폴더에 같은 번호가 있을 수 있으므로 이슈는 항상 유형과 함께 부른다.
+- `release`는 이름이 버전에서 나오므로 이슈 문서와 유형 폴더를 만들지 않는다.
+
+**이슈 문서에 대응하는 브랜치 이름은 이슈 경로에서 `docs/issues/`와 `.md`를 뺀 값과 같다.**
+
+| 이슈 문서 | 브랜치 |
+| --- | --- |
+| `docs/issues/feature/01-ai-api.md` | `feature/01-ai-api` |
+| `docs/issues/bugfix/01-token-refresh-race.md` | `bugfix/01-token-refresh-race` |
+| `docs/issues/hotfix/01-security-patch.md` | `hotfix/01-security-patch` |
+
+- 이슈 문서 하나에는 브랜치 하나만 대응한다.
+- 이슈 문서가 없는 작업은 4.2의 `<구분>/<짧은-설명>` 형식을 그대로 쓴다.
+
+### 4.4 하위 브랜치
+
+이슈 범위가 커서 나누는 편이 낫다고 판단될 때만 이슈 브랜치에서 다시 분기한다.
+
+**하위 브랜치 이름은 상위 브랜치 이름을 그대로 둔 채 뒤에 `-<작업 단위>`만 덧붙인다.**
+상위 브랜치 이름은 구분, 번호, 설명 중 어느 것도 줄이거나 바꾸지 않는다.
+
+```text
+feature/01-ai-api            ← 상위 브랜치. 이 이름을 그대로 둔다
+feature/01-ai-api-dto        ← 뒤에 -dto 만 덧붙인다
+feature/01-ai-api-endpoint
+feature/01-ai-api-test
+```
+
+사용하지 않는 형식:
+
+```text
+feature/01-dto               ← 이슈 설명을 뺐다
+feature/ai-api-dto           ← 이슈 번호를 뺐다
+feature/01-ai-api--dto       ← 이어 붙이는 구분자를 바꿨다
+chore/01-ai-api-dto          ← 상위 브랜치의 구분을 바꿨다
+```
+
+- `<작업 단위>`는 영어 소문자와 하이픈으로 쓰고 하이픈 하나로 이어 붙인다.
+- 하위 브랜치 때문에 이슈 문서를 새로 만들거나 번호를 새로 매기지 않는다.
+- 분기는 이슈 브랜치 아래 한 단계까지만 허용하며 하위 브랜치를 다시 쪼개지 않는다.
+- 슬래시로 중첩한 `feature/01-ai-api/dto`는 사용하지 않는다.
+  Git이 같은 이름의 브랜치와 디렉토리를 함께 둘 수 없어 브랜치 생성이 실패한다.
+
+### 4.5 분기 기준
+
 - 사용자가 따로 명시하지 않았다면 브랜치는 최신 `main`에서 분기한다.
+- 하위 브랜치는 `main`이 아니라 해당 이슈 브랜치에서 분기한다.
+
+### 4.6 PR 대상 브랜치
+
+- 하위 브랜치의 PR은 이슈 브랜치를 대상으로 보낸다.
+- 이슈 브랜치의 PR은 이슈 작업을 모두 마친 뒤 `main`을 대상으로 한 번 보낸다.
+- 이슈 하나가 `main`에 들어가는 PR은 한 개다.
+
+```text
+feature/01-ai-api-dto       --PR-->  feature/01-ai-api
+feature/01-ai-api-endpoint  --PR-->  feature/01-ai-api
+feature/01-ai-api-test      --PR-->  feature/01-ai-api
+
+feature/01-ai-api           --PR-->  main   (이슈 완료 시 1회)
+```
 
 ## 5. Git Commit
 
@@ -393,6 +484,7 @@ feat: 사용자 생성 API 엔드포인트 추가
 ## 6. GitHub PR
 
 - `gh` CLI를 사용하여 작업.
+- PR을 보낼 대상 브랜치는 [4.6](#46-pr-대상-브랜치)을 따른다.
 ### 6.1 제목
 - [`카테고리`] `한 줄 설명` 
 - `카테고리`: 어디를 변경했는지 또는 어떤 기능을 건드렸는지 등의 이번 작업에서 주로 다룬 것을 짧은 단어로 표현
