@@ -16,6 +16,7 @@ import app.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.services import llm_service
 
 TEST_DATABASE_URL = "sqlite://"  # 파일을 만들지 않는 인메모리 DB
 
@@ -40,6 +41,27 @@ def db() -> Generator[Session, None, None]:
 
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+@pytest.fixture
+def fake_llm(monkeypatch: pytest.MonkeyPatch):
+    """llm_service가 실제 OpenAI 대신 미리 정한 출력이나 예외를 내게 바꾼다."""
+
+    def install(output: object) -> None:
+        # 실제 함수와 같은 시그니처로 선언해 호출부의 인자 드리프트를 잡는다.
+        def fake_generate_structured(
+            instructions: str, input_text: str, output_type: type
+        ) -> object:
+            if isinstance(output, Exception):
+                raise output
+            assert isinstance(output, output_type)
+            return output
+
+        monkeypatch.setattr(
+            llm_service, "generate_structured", fake_generate_structured
+        )
+
+    return install
 
 
 @pytest.fixture
