@@ -61,10 +61,10 @@ orchestration, guardrail을 별도 개념으로 다룬다. 기능 내부의 제�
 - 사용자별 진행 단계
 - provider의 대화 객체를 그대로 노출하는 계약
 
-### 2.4 하나의 provider만 연결한다
+### 2.4 OpenAI 하나만 연결한다
 
-구현 직전에 첫 에이전트에서도 사용할 LLM provider 하나를 정하고 해당 SDK만
-추가한다. 이번 이슈에서는 다음을 만들지 않는다.
+첫 에이전트에서도 그대로 쓸 provider로 OpenAI를 쓰고 `openai` SDK만 추가한다.
+이번 이슈에서는 다음을 만들지 않는다.
 
 - OpenAI·Anthropic 동시 지원
 - `LLM_PROVIDER`에 따른 자동 선택
@@ -77,7 +77,7 @@ orchestration, guardrail을 별도 개념으로 다룬다. 기능 내부의 제�
 
 ### 2.5 모델 출력 DTO와 API 응답 DTO를 구분한다
 
-선택한 provider의 structured output 또는 JSON schema 기능을 우선 사용한다.
+OpenAI의 structured output(JSON schema)으로 모델 출력 형식을 강제한다.
 
 - 모델 출력 형식은 `app/schemas/`의 Pydantic DTO로 정의한다.
 - LLM 호출 함수는 provider 원본 응답을 모델 출력 DTO로 검증해 반환한다.
@@ -105,10 +105,10 @@ orchestration, guardrail을 별도 개념으로 다룬다. 기능 내부의 제�
 - 질문 하나 반환, 질문 중복 방지, 건너뛰기, 최대 질문 수
 - `title`, `memo` 중심의 후보 DTO
 - `trim + casefold` 기준 제목 중복 제거, 순서 유지, 최대 5개 제한
-- 단일 LLM provider의 SDK 호출
+- OpenAI SDK 호출
 - 설정 누락, 외부 호출 실패, 잘못된 모델 응답의 도메인 오류 변환
 - 외부 LLM을 fake로 바꾼 최소 계약 테스트
-- `.env.example`의 단일 provider 설정 예시
+- `.env.example`의 OpenAI 설정 예시
 
 ### 3.2 제외
 
@@ -147,32 +147,50 @@ orchestration, guardrail을 별도 개념으로 다룬다. 기능 내부의 제�
 
 모델이 결과를 반환하면 후보 목록을 그대로 쓰지 않고 정해진 규칙으로 정리한다.
 제목의 앞뒤 공백을 없애고, 공백과 대소문자를 무시했을 때 같은 제목은 하나만
-남기며, 모델이 준 순서를 유지한 채 최대 5개까지만 반환한다.
+남기며, 모델이 준 순서를 유지한 채 5.1의 상한까지만 반환한다.
 
 두 기능은 DB를 사용하지 않는다. `models`, `repositories`, `db`를 참조하지 않고
 기존 의존 방향인 `api → services → schemas/exceptions`를 지킨다.
 
-```text
-최초 요청
-  → 정보 부족: needs_clarification + 질문 하나
-  → 앱이 답변 또는 skip을 clarification 이력에 추가
-  → 같은 API 재요청
-  → 정보 충분 또는 질문 한도 도달: completed + 최종 결과
-```
+## 5. DTO와 필드 정의
 
-엔드포인트는 동기 `def`로 선언하고 `response_model`과 union DTO 반환형을 명시한다.
-에이전트 단계에서는 HTTP를 다시 호출하지 않고 두 feature service를 R1 후보 생성
-tool handler가 감쌀 수 있게 한다.
+### 5.1 필드 정의
 
-| 구분 | 내용 |
-| --- | --- |
-| 유지할 발판 | 요청·응답 DTO, 무상태 service, 질문·후보 상한 |
-| 교체 가능 | 정보 충분성 prompt, LLM SDK 호출, model 설정 |
-| 후속 추가 | Agent Runner, 기능 간 orchestration, ModelPort, trace·평가 |
+두 API가 주고받는 모든 필드의 타입·길이·개수·허용값을 여기에만 적는다. 다른
+절은 값을 다시 적지 않고 규칙과 근거만 설명한다.
 
-## 5. 공통 DTO 계약
+| 필드 | 소속 DTO | 타입 | 길이·개수 |
+| --- | --- | --- | --- |
+| `text` | 브레인덤프 요청 | 문자열 | trim 후 1~500자 |
+| `goal` | 쪼개기 요청 | 문자열 | trim 후 1~100자 |
+| `clarifications` | 브레인덤프·쪼개기 요청 | 구체화 답변 목록 | 브레인덤프 1개, 쪼개기 3개 이하 |
+| `title` | 할 일 후보 | 문자열 | trim 후 1~100자 |
+| `memo` | 할 일 후보 | 문자열, 없으면 `""` | trim 후 200자 이하 |
+| `key` | 구체화 질문·답변 | 아래 허용값 | — |
+| `text` | 구체화 질문·답변 | 문자열 | trim 후 1~200자 |
+| `options` | 구체화 질문 | 문자열 목록 | 0개 또는 2~4개, 항목당 1~50자 |
+| `answer` | 구체화 답변 | 문자열 또는 `null` | 전달하면 trim 후 1~300자 |
+| `skipped` | 구체화 답변 | 불리언 | — |
+| `candidates` | 브레인덤프 결과 | 할 일 후보 목록 | 5개 이하 |
+| `first_step` | 쪼개기 결과 | 할 일 후보 또는 `null` | — |
+| `steps` | 쪼개기 결과 | 할 일 후보 목록 | `first_step` 포함 합계 5개 이하 |
 
-### 5.1 후보 DTO
+`할 일 후보`, `구체화 질문`, `구체화 답변`은 각각 5.2, 5.3, 5.4의 DTO를 가리킨다.
+`goal`이 `text`보다 짧은 이유는 7.1에 적는다.
+
+허용 `key`는 다음과 같다.
+
+| 기능 | key | 채우는 맥락 |
+| --- | --- | --- |
+| 브레인덤프 | `action_detail` | 직접 해야 하는 일 하나 — 후보를 만들 근거 |
+| 할 일 쪼개기 | `progress` | 지금까지의 진행 상태 — 분해의 시작점 |
+| 할 일 쪼개기 | `done` | 완료 기준과 원하는 결과물 — 분해의 종착점 |
+| 할 일 쪼개기 | `capacity` | 이 일에 쓸 수 있는 시간 — 각 단계의 크기 |
+| 할 일 쪼개기 | `blocker` | 막히는 지점 — `first_step` 설계의 근거 |
+
+이 표에 없는 `key`는 요청에서도 모델 응답에서도 허용하지 않는다.
+
+### 5.2 할 일 후보 DTO
 
 ```json
 {
@@ -181,12 +199,13 @@ tool handler가 감쌀 수 있게 한다.
 }
 ```
 
-- `title`은 trim 후 비어 있을 수 없다.
-- `memo`는 선택 정보이며 없으면 빈 문자열을 사용한다.
+- `title`의 상한이 `goal`과 같은 이유는 이 후보를 그대로 할 일 쪼개기의 `goal`로
+  보낼 수 있어야 하기 때문이다.
+- `memo`는 선택 정보이며 없으면 빈 문자열을 쓴다.
 - ID, 완료 여부, 우선순위, 생성 시각 등 저장 필드는 포함하지 않는다.
 - UI 안내 문구는 응답 DTO에 넣지 않는다.
 
-### 5.2 구체화 질문 DTO
+### 5.3 구체화 질문 DTO
 
 ```json
 {
@@ -196,12 +215,11 @@ tool handler가 감쌀 수 있게 한다.
 }
 ```
 
-- `key`는 기능별 허용값 중 하나다.
 - `text`는 한 번에 하나의 정보만 묻는다.
-- `options`는 생략 가능하며 제공하면 2~4개로 제한한다.
+- `options`는 생략할 수 있다.
 - 앱은 선택지와 별개로 자유 입력을 항상 제공할 수 있다.
 
-### 5.3 누적 답변 DTO
+### 5.4 구체화 질문에 대한 답변 DTO
 
 답한 질문:
 
@@ -230,9 +248,9 @@ tool handler가 감쌀 수 있게 한다.
 - 앱은 서버가 반환한 `key`와 `text`를 바꾸지 않고 다음 요청에 전달한다.
 - 같은 `key`는 이력에 한 번만 존재할 수 있다.
 
-### 5.4 공통 응답 형태
+### 5.5 AI 모델의 응답 형태
 
-질문이 필요한 경우:
+구체화를 위해 질문이 필요한 경우:
 
 ```json
 {
@@ -245,7 +263,7 @@ tool handler가 감쌀 수 있게 한다.
 }
 ```
 
-완료된 경우:
+구체화를 하기에 맥락이 충분한 경우:
 
 ```json
 {
@@ -261,7 +279,7 @@ tool handler가 감쌀 수 있게 한다.
 
 `POST /api/v1/ai/brain-dump`
 
-### 6.1 요청
+### 6.1 사용자의 첫 응답
 
 ```json
 {
@@ -270,9 +288,18 @@ tool handler가 감쌀 수 있게 한다.
 }
 ```
 
-`clarifications`는 생략할 수 있으며 기본값은 빈 목록이다.
+첫 요청에는 답한 질문이 없다.
+`clarifications`는 생략할 수 있으며 기본값은 빈 목록이다.     
 
-### 6.2 정보가 부족한 응답
+`clarifications`는 서버가 던진 질문과 그에 대한 사용자의 답변 또는 건너뛰기
+여부를 쌓아 둔 이력이다. 서버는 이 이력으로 이미 답하거나
+건너뛴 항목을 판별한다. 각 항목의 형식은 5.4를 따른다.      
+
+### 6.2 정보가 부족한 응답이라고 모델이 판단한 경우의 모델 출력
+
+허용 `key`가 `action_detail` 하나인 것은 축약이 아니라 규칙의 결과다.
+브레인덤프는 후보가 하나도 없을 때만 질문하므로, 그 시점에 물을 수 있는 것은
+"그래서 무엇을 해야 하는가" 하나뿐이다.
 
 ```json
 {
@@ -285,7 +312,7 @@ tool handler가 감쌀 수 있게 한다.
 }
 ```
 
-답변 후 재요청:
+사용자가 답변 후 재요청:
 
 ```json
 {
@@ -336,9 +363,6 @@ tool handler가 감쌀 수 있게 한다.
 - 감정·상태·바람을 새로운 행동으로 바꾸지 않는다.
 - 입력에 명시된 큰 목표를 임의로 쪼개지 않는다.
 - title의 `trim + casefold` 결과가 같으면 첫 후보만 유지한다.
-- 입력 순서를 유지하며 최대 5개를 반환한다.
-- 데모 prompt의 행동 추출 규칙은 유지하되 질문·완료 union DTO에 맞게 출력 지시를
-  변경한다. 이 이슈에서 품질 튜닝은 하지 않는다.
 
 ## 7. 할 일 쪼개기 API
 
@@ -352,6 +376,9 @@ tool handler가 감쌀 수 있게 한다.
   "clarifications": []
 }
 ```
+
+`goal`은 브레인덤프가 만든 후보의 `title` 하나를 그대로 받는 값이다. 자유
+서술이 아니라 할 일 한 줄이므로 5.1의 `title`과 같은 상한을 쓴다.
 
 ### 7.2 정보가 부족한 응답
 
@@ -434,32 +461,16 @@ tool handler가 감쌀 수 있게 한다.
 - 정보가 충분하거나 질문 3회에 도달하면 현재 정보로 결과를 생성한다.
 - `first_step`은 목표에 특화되고 바로 착수할 수 있는 가장 작은 행동으로 만든다.
 - `steps`는 실행 순서를 유지한다.
-- `first_step`과 `steps`를 합쳐 최대 5개를 반환한다.
 - 전체 결과에서 title의 `trim + casefold`가 같으면 `first_step`을 우선 유지하고
   중복된 후속 단계를 제거한다.
 - 결과가 비어 있지 않으면 유효한 `first_step`이 반드시 있어야 한다.
 - `first_step=null`인데 `steps`가 있으면 승격하지 않고 모델 응답 오류로 처리한다.
-- 데모 prompt의 분해 규칙은 유지하되 질문·완료 union DTO에 맞게 출력 지시를
-  변경한다. 이 이슈에서 품질 튜닝은 하지 않는다.
 
-## 8. 입력과 상태 검증
+## 8. 검증 규칙
 
-### 8.1 길이와 개수
-
-- `text`: trim 후 1~10,000자
-- `goal`: trim 후 1~2,000자
-- 질문 `text`: trim 후 1~500자
-- 답변 `answer`: 전달하면 trim 후 1~1,000자
-- 질문 선택지: 0개 또는 2~4개, 항목당 1~200자
-- 브레인덤프 clarification 이력: 최대 1개
-- 할 일 쪼개기 clarification 이력: 최대 3개
-
-### 8.2 이력 검증
-
-- 기능별 허용 `key`만 받는다.
+- 5.1의 타입·길이·개수·허용값을 벗어나면 `422`로 거절한다.
 - 같은 `key`가 두 번 있으면 `422`로 거절한다.
 - `answer`와 `skipped` 조합이 맞지 않으면 `422`로 거절한다.
-- 최대 이력 수를 넘으면 `422`로 거절한다.
 - 요청 형식 오류는 LLM 호출 전에 차단한다.
 - 이미 답했거나 건너뛴 `key`를 모델이 다시 질문하면 `invalid_ai_response`로 처리한다.
 - 질문 한도에서 모델이 다시 질문하면 `invalid_ai_response`로 처리한다.
@@ -470,53 +481,18 @@ schema에서 검증한다.
 
 ## 9. LLM 호출과 오류
 
-### 9.1 단일 provider 설정
+### 9.1 OpenAI 설정
 
-구현 전에 실제 에이전트 PoC에서 사용할 provider 하나를 고른다. 선택한 provider의
-API key, model, timeout만 `app/core/config.py`와 `.env.example`에 추가하고 해당
-SDK 하나만 `pyproject.toml`에 설치한다.
+provider는 OpenAI로 고정한다. `openai` SDK 하나만 `pyproject.toml`에 설치하고,
+아래 세 값만 `app/core/config.py`와 `.env.example`에 추가한다.
 
-- `LLM_PROVIDER`와 자동 선택 로직은 추가하지 않는다.
-- API key는 앱 시작의 필수값으로 만들지 않고 AI 호출 시점에 검사한다.
-- 키가 없어도 health API와 서버는 기동되어야 한다.
-- timeout은 명시하되 app 수준 retry와 provider fallback은 구현하지 않는다.
-- LLM 호출 함수는 요청마다 기능별 model output DTO를 response schema로 받는다.
+| 설정 | 환경 변수 | 값 |
+| --- | --- | --- |
+| API key | `OPENAI_API_KEY` | 기본값 없음 |
+| model | `OPENAI_MODEL` | `gpt-4.1-mini` |
+| timeout | `OPENAI_TIMEOUT_SECONDS` | `30` |
 
-### 9.2 모델 응답 처리
-
-모델은 한 번의 호출에서 질문 또는 완료 결과 중 하나를 반환한다.
-
-브레인덤프 질문 형식:
-
-```json
-{
-  "status": "needs_clarification",
-  "question": {
-    "key": "action_detail",
-    "text": "직접 해야 하는 일을 한 가지만 말해줄래요?",
-    "options": []
-  }
-}
-```
-
-브레인덤프 완료 형식:
-
-```json
-{
-  "status": "completed",
-  "result": {
-    "candidates": []
-  }
-}
-```
-
-할 일 쪼개기도 같은 discriminator를 사용하고 `completed.result`만
-`first_step`, `steps` DTO로 바꾼다.
-
-정식 schema 검증 후 질문 이력 규칙 또는 title trim, `casefold` 중복 제거, 최대
-5개 제한만 적용한다. 코드 펜스, wrapper 별칭, legacy 배열은 복구하지 않는다.
-
-### 9.3 오류 계약
+### 9.2 오류 계약
 
 서비스는 `HTTPException` 대신 `app/exceptions/ai.py`의 `DomainError` 하위 예외를
 발생시킨다. 기존 전역 handler가 다음 형식으로 변환한다.
@@ -537,5 +513,4 @@ SDK 하나만 `pyproject.toml`에 설치한다.
 | union DTO·질문 이력 규칙을 어긴 모델 응답 | `502` | `invalid_ai_response` |
 | 정식 빈 후보·빈 분해 결과 | `200` | 없음 |
 
-사용자 정보 부족과 질문 반환은 오류가 아니며 `200 needs_clarification`로 처리한다.
 SDK 예외명, API key, 모델 원문 응답은 HTTP 응답에 노출하지 않는다.
