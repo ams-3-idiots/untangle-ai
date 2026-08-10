@@ -164,7 +164,7 @@ def test_brain_dump_rejects_duplicate_key(client: TestClient, fake_llm):
         json={"text": "요즘 너무 바빠.", "clarifications": [answer, answer]},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert response.json()["code"] == "invalid_clarification_state"
 
 
@@ -290,7 +290,7 @@ def test_task_breakdown_rejects_clarifications_over_limit(client: TestClient, fa
         json={"goal": "이직용 포트폴리오 만들기", "clarifications": clarifications},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert response.json()["code"] == "invalid_clarification_state"
 
 
