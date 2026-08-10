@@ -6,8 +6,9 @@ from app.exceptions.base import DomainError
 class InvalidClarificationStateError(DomainError):
     """중복 key나 질문 한도를 넘긴 구체화 이력으로 요청한 상태."""
 
-    status_code = 422
+    status_code = 400
     code = "invalid_clarification_state"
+    description = "구체화 이력에 중복 key가 있거나 질문 한도를 넘었다."
 
 
 class AINotConfiguredError(DomainError):
@@ -15,6 +16,7 @@ class AINotConfiguredError(DomainError):
 
     status_code = 503
     code = "ai_not_configured"
+    description = "AI 기능이 설정되지 않아 요청을 처리할 수 없다."
 
 
 class AIProviderError(DomainError):
@@ -22,6 +24,7 @@ class AIProviderError(DomainError):
 
     status_code = 502
     code = "ai_provider_error"
+    description = "LLM 호출이 실패했다."
 
 
 class InvalidAIResponseError(DomainError):
@@ -29,3 +32,4 @@ class InvalidAIResponseError(DomainError):
 
     status_code = 502
     code = "invalid_ai_response"
+    description = "형식이나 질문 이력 규칙을 어긴 AI 응답을 받았다."
