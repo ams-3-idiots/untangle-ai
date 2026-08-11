@@ -1,4 +1,6 @@
-# 02. API 테스트를 위한 Swagger 설정
+# API 테스트를 위한 Swagger 설정
+
+> 관련 GitHub Issue: [#7](https://github.com/ams-3-idiots/untangle-ai/issues/7)
 
 ## 0. 목차
 
@@ -154,8 +156,9 @@ class BrainDumpRequest(BaseModel):
 - 예시는 Swagger UI의 `Try it out` 입력창에 그대로 채워지므로, 복사해서 바로 보낼
   수 있는 값으로 쓴다.
 - `Field`의 제약(`min_length`, `max_length`)은 문서의 스키마 설명에도 반영된다. 설명 문구로 다시 반복하지 않는다.
-- [01번 이슈](01-ai-api.md#54-공통-응답-형태)의 `status` discriminator union 응답은
-  Swagger UI에서 두 개의 선택지로 표시된다. 각 하위 DTO에 예시를 하나씩 둬야 두 경우가 모두 보인다.
+- [대화형 AI API 명세](6-interactive-ai-api.md#55-ai-모델의-응답-형태)의 `status`
+  discriminator union 응답은 Swagger UI에서 두 개의 선택지로 표시된다.
+  각 하위 DTO에 예시를 하나씩 둬야 두 경우가 모두 보인다.
 
 ### 4.4 오류 응답 문서화
 
