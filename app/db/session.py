@@ -31,6 +31,7 @@ SessionLocal = sessionmaker(
 
 
 def get_db() -> Generator[Session, None, None]:
+    """요청 단위 DB 세션의 정리와 예외 롤백을 책임진다."""
     db = SessionLocal()
 
     try:

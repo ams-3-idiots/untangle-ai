@@ -2,7 +2,8 @@
 
 FastAPI + SQLAlchemy 기반 API 서버.
 
-개발 규칙(레이어 구조, 테스트, 커밋 형식)은 [AGENTS.md](AGENTS.md)에 있다.
+개발 규칙(레이어 구조, 코드 스타일)은 [AGENTS.md](AGENTS.md)에 있고,
+테스트와 Git 규약은 [docs/conventions/](docs/conventions/)에 있다.
 
 ## 개발 환경 구성
 
