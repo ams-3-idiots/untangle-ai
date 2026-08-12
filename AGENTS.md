@@ -14,7 +14,7 @@
 
 1. [프로젝트 구조](#1-프로젝트-구조) — 레이어 역할과 의존 방향, 이름 규칙, OpenAPI 문서화
 2. [Python 코드 스타일](#2-python-코드-스타일) — Docstring과 주석, Ruff 실행과 검증 기준
-3. [작업 완료 전 확인](#3-작업-완료-전-확인) — 테스트 실행 시점과 실패 처리
+3. [작업 완료 전 확인](#3-작업-완료-전-확인) — 테스트 실행 시점과 실패 처리, API 문서 확인
 4. [커밋 전 사용자 검토](#4-커밋-전-사용자-검토) — 커밋 생성 전 승인 절차
 
 ### 0.2 상황별로 읽는 규약 문서
@@ -186,7 +186,7 @@ API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenA
 | `core/openapi.py` | 문서에 그대로 노출되는 고정 문자열 `API_DESCRIPTION`·`OPENAPI_TAGS` |
 | `api/` 엔드포인트 | `summary`·docstring·`response_model`·`status_code`·`responses` |
 | `schemas/` | 필드 `description`과 요청 예시, 공통 오류 본문 `ErrorResponse` |
-| `exceptions/` | 예외별 소비자용 `description`, `responses` 변환(`error_responses`) |
+| `exceptions/` | 예외별 `description`, `responses` 변환(`error_responses`) |
 
 - **태그**: 도메인 단위로만 만들고 엔드포인트마다 새 태그를 만들지 않는다.
   라우터의 `APIRouter(prefix=..., tags=[...])` 선언과 `OPENAPI_TAGS`의 이름을 일치시킨다.
@@ -195,18 +195,16 @@ API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenA
 - **엔드포인트**: `summary`는 목록에 보이는 한 줄이며 동사로 끝나는 짧은 문장으로 쓴다.
   함수 docstring이 그대로 Swagger 설명이 되므로 내부 구현이 아니라 호출하는 쪽이
   알아야 할 규칙을 쓰고, 길이는 [2.1](#21-docstring과-주석)의 두 줄 제한을 그대로 따른다.
-  `response_model`은 반환 타입으로도 유추되지만 문서·직렬화 계약을 명시적으로
-  고정하기 위해 항상 선언하고, 성공 상태 코드가 200이 아니면 `status_code`도 함께 적는다.
 - **스키마**: 필드 설명은 `Field(description=...)`에, 요청 전체 예시는 `model_config`의
   `json_schema_extra["examples"]`에 둔다. 예시는 Swagger UI의 `Try it out` 입력창에
   그대로 채워지므로 수정 없이 보내도 정상 응답을 받는 값으로 쓴다.
   `min_length` 같은 `Field` 제약은 문서에 자동 반영되므로 설명 문구로 반복하지 않는다.
   discriminated union 응답은 하위 DTO마다 예시를 하나씩 둬야 모든 경우가 문서에 보인다.
 - **오류 응답**: 도메인 예외는 핸들러가 JSON으로 바꾸므로 FastAPI가 자동 문서화하지 못한다.
-  `DomainError` 하위 클래스는 `status_code`·`code`와 함께 문서에 노출할 소비자용
+  `DomainError` 하위 클래스는 `status_code`·`code`와 함께 문서에 노출할
   `description`을 재정의한다. docstring은 코드를 읽는 개발자용으로 분리 유지한다.
   엔드포인트는 자신이 발생시킬 수 있는 예외만 `error_responses()`에 넘겨 `responses`로 선언한다.
-- **422 금지와의 연결**: [1.3](#13-데이터-흐름과-책임)의 규칙대로 도메인 예외에 `422`를 쓰지 않는다.
+- **422 도메인 예외 추가 금지**: [1.3](#13-데이터-흐름과-책임)의 규칙대로 도메인 예외에 `422`를 쓰지 않는다.
   `422`를 선언하면 FastAPI가 자동 문서화하는 요청 검증 오류 응답을 덮어쓰고
   `error_responses()`에 특례가 필요해진다.
 
@@ -228,17 +226,7 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:
     return user_service.create_user(db, payload)
 ```
 
-API 엔드포인트나 스키마를 변경한 뒤에는 생성된 문서를 직접 확인한다.
-
-- OpenAPI 명세가 오류 없이 생성되는지 확인한다.
-
-  ```bash
-  uv run python -c "from app.main import app; app.openapi()"
-  ```
-
-- 요청 예시가 실행 가능한지 확인한다. `uv run fastapi dev app/main.py`로 서버를 띄우고
-  `/docs`에서 변경한 엔드포인트의 `Try it out`에 채워진 예시를 그대로 `Execute`하거나,
-  브라우저를 쓸 수 없으면 `TestClient`·`curl`로 예시 본문을 수정 없이 보내 정상 응답을 확인한다.
+API 변경 후 생성된 문서를 확인하는 절차는 [3. 작업 완료 전 확인](#3-작업-완료-전-확인)에 있다.
 
 ## 2. Python 코드 스타일
 
@@ -262,7 +250,16 @@ API 엔드포인트나 스키마를 변경한 뒤에는 생성된 문서를 직�
 
 - 기능을 수정하는 동안에는 관련 테스트를 먼저 실행하고, 작업을 마치기 전에는 전체 테스트를 실행한다.
 - 실패한 테스트를 삭제하거나 건너뛰는 대신 원인을 확인해 코드 또는 테스트를 수정한다.
-- API 엔드포인트나 스키마를 변경했다면 [1.6](#16-openapiswagger-문서화)의 문서 확인 절차를 함께 수행한다.
+- API 엔드포인트나 스키마를 변경했다면 생성된 문서를 직접 확인한다.
+  - OpenAPI 명세가 오류 없이 생성되는지 확인한다.
+
+    ```bash
+    uv run python -c "from app.main import app; app.openapi()"
+    ```
+
+  - 요청 예시가 실행 가능한지 확인한다. `uv run fastapi dev app/main.py`로 서버를 띄우고
+    `/docs`에서 변경한 엔드포인트의 `Try it out`에 채워진 예시를 그대로 `Execute`하거나,
+    브라우저를 쓸 수 없으면 `TestClient`·`curl`로 예시 본문을 수정 없이 보내 정상 응답을 확인한다.
 - 실행 명령은 [`docs/conventions/testing.md`](docs/conventions/testing.md)에 있다.
 - 린트는 [2.2](#22-린터-및-포매터)를 따른다.
 
