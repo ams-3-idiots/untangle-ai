@@ -12,7 +12,7 @@
 
 ### 0.1 개발 가이드라인의 상시 규칙
 
-1. [프로젝트 구조](#1-프로젝트-구조) — 레이어 역할과 의존 방향, 이름 규칙
+1. [프로젝트 구조](#1-프로젝트-구조) — 레이어 역할과 의존 방향, 이름 규칙, OpenAPI 문서화
 2. [Python 코드 스타일](#2-python-코드-스타일) — Docstring과 주석, Ruff 실행과 검증 기준
 3. [작업 완료 전 확인](#3-작업-완료-전-확인) — 테스트 실행 시점과 실패 처리
 4. [커밋 전 사용자 검토](#4-커밋-전-사용자-검토) — 커밋 생성 전 승인 절차
@@ -42,6 +42,7 @@
 | `app/schemas/` | 요청·응답 형식 |
 | `app/exceptions/` | 도메인 예외와 HTTP 오류 변환 |
 | `app/db/` | DB 연결과 세션 |
+| `app/core/` | 환경 설정과 문서용 고정 문자열 |
 | `tests/` | API와 비즈니스 로직 테스트 |
 
 ### 1.2 의존 방향
@@ -49,11 +50,14 @@
 ```
 main → api → services → repositories → models
 
-schemas : api, services 가 참조
+schemas : api, services 가 참조하며, exceptions 도 공통 오류 본문(ErrorResponse)을 참조
 exceptions : 도메인 예외와 HTTP 응답 변환을 관리한다.
-             services는 도메인 예외를 참조하고, main은 예외 핸들러를 등록한다.
+             services는 도메인 예외를 참조하고, main은 예외 핸들러를 등록하며,
+             api는 responses 문서화를 위해 도메인 예외와 error_responses 를 참조한다.
 db      : 엔진·세션 팩토리·세션 주입 의존성과 Base 를 제공.
           api(세션 주입), models(Base 상속) 가 참조하며, db 는 다른 레이어를 참조하지 않는다.
+core    : 환경 설정(config)과 문서용 고정 문자열(openapi)을 제공.
+          main·db·services 가 참조하며, core 는 다른 레이어를 참조하지 않는다.
 ```
 - **의존 방향이 어긋나는 코드는 절대 작성하지 않습니다.**
 
@@ -140,7 +144,7 @@ def create_user(db: Session, payload: UserCreate) -> UserRead:
 
 @router.post("", response_model=UserRead, status_code=201)
 def create_user(payload: UserCreate, db: DbSession) -> UserRead:
-    """사용자 생성 요청을 서비스에 전달한다."""
+    """이메일이 중복이면 생성하지 않고 `409`로 응답한다."""
     return user_service.create_user(db, payload)
 ```
 
@@ -168,6 +172,74 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:
 
 로직이 거의 없어도 5번에서 4번을 건너뛰지 않는다. 기존 레이어로 설명되지 않는 코드가 생기면 새 디렉토리를 만들기 전에 사용자에게 확인한다.
 
+### 1.6 OpenAPI/Swagger 문서화
+
+API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenAPI 문서로 공유한다.
+`/docs`(Swagger UI), `/redoc`(ReDoc), `/openapi.json`(명세 원본)은 항상 열어 두며,
+이 경로를 끄거나 바꾸는 설정(`docs_url` 등)을 추가하지 않는다.
+
+문서용 메타데이터는 문서 전용 레이어를 만들지 않고 아래 위치에 나눠 붙인다.
+
+| 위치 | 문서화 책임 |
+| --- | --- |
+| `main.py` | 앱 제목·설명·태그 목록을 `FastAPI(...)` 인자로 조립 |
+| `core/openapi.py` | 문서에 그대로 노출되는 고정 문자열 `API_DESCRIPTION`·`OPENAPI_TAGS` |
+| `api/` 엔드포인트 | `summary`·docstring·`response_model`·`status_code`·`responses` |
+| `schemas/` | 필드 `description`과 요청 예시, 공통 오류 본문 `ErrorResponse` |
+| `exceptions/` | 예외별 소비자용 `description`, `responses` 변환(`error_responses`) |
+
+- **태그**: 도메인 단위로만 만들고 엔드포인트마다 새 태그를 만들지 않는다.
+  라우터의 `APIRouter(prefix=..., tags=[...])` 선언과 `OPENAPI_TAGS`의 이름을 일치시킨다.
+  모든 태그는 `description`과 함께 `OPENAPI_TAGS`에 등록하고, 태그 없는 엔드포인트를
+  두지 않는다. `OPENAPI_TAGS`의 순서가 문서에 표시되는 순서다.
+- **엔드포인트**: `summary`는 목록에 보이는 한 줄이며 동사로 끝나는 짧은 문장으로 쓴다.
+  함수 docstring이 그대로 Swagger 설명이 되므로 내부 구현이 아니라 호출하는 쪽이
+  알아야 할 규칙을 쓰고, 길이는 [2.1](#21-docstring과-주석)의 두 줄 제한을 그대로 따른다.
+  `response_model`은 반환 타입으로도 유추되지만 문서·직렬화 계약을 명시적으로
+  고정하기 위해 항상 선언하고, 성공 상태 코드가 200이 아니면 `status_code`도 함께 적는다.
+- **스키마**: 필드 설명은 `Field(description=...)`에, 요청 전체 예시는 `model_config`의
+  `json_schema_extra["examples"]`에 둔다. 예시는 Swagger UI의 `Try it out` 입력창에
+  그대로 채워지므로 수정 없이 보내도 정상 응답을 받는 값으로 쓴다.
+  `min_length` 같은 `Field` 제약은 문서에 자동 반영되므로 설명 문구로 반복하지 않는다.
+  discriminated union 응답은 하위 DTO마다 예시를 하나씩 둬야 모든 경우가 문서에 보인다.
+- **오류 응답**: 도메인 예외는 핸들러가 JSON으로 바꾸므로 FastAPI가 자동 문서화하지 못한다.
+  `DomainError` 하위 클래스는 `status_code`·`code`와 함께 문서에 노출할 소비자용
+  `description`을 재정의한다. docstring은 코드를 읽는 개발자용으로 분리 유지한다.
+  엔드포인트는 자신이 발생시킬 수 있는 예외만 `error_responses()`에 넘겨 `responses`로 선언한다.
+- **422 금지와의 연결**: [1.3](#13-데이터-흐름과-책임)의 규칙대로 도메인 예외에 `422`를 쓰지 않는다.
+  `422`를 선언하면 FastAPI가 자동 문서화하는 요청 검증 오류 응답을 덮어쓰고
+  `error_responses()`에 특례가 필요해진다.
+
+[1.3](#13-데이터-흐름과-책임)의 사용자 생성 엔드포인트에 문서 메타데이터를 붙이면:
+
+```python
+USER_ERROR_RESPONSES = error_responses(DuplicateEmailError)
+
+
+@router.post(
+    "",
+    response_model=UserRead,
+    status_code=201,
+    summary="사용자를 생성한다",
+    responses=USER_ERROR_RESPONSES,
+)
+def create_user(payload: UserCreate, db: DbSession) -> UserRead:
+    """이메일이 중복이면 생성하지 않고 `409`로 응답한다."""
+    return user_service.create_user(db, payload)
+```
+
+API 엔드포인트나 스키마를 변경한 뒤에는 생성된 문서를 직접 확인한다.
+
+- OpenAPI 명세가 오류 없이 생성되는지 확인한다.
+
+  ```bash
+  uv run python -c "from app.main import app; app.openapi()"
+  ```
+
+- 요청 예시가 실행 가능한지 확인한다. `uv run fastapi dev app/main.py`로 서버를 띄우고
+  `/docs`에서 변경한 엔드포인트의 `Try it out`에 채워진 예시를 그대로 `Execute`하거나,
+  브라우저를 쓸 수 없으면 `TestClient`·`curl`로 예시 본문을 수정 없이 보내 정상 응답을 확인한다.
+
 ## 2. Python 코드 스타일
 
 ### 2.1 Docstring과 주석
@@ -190,6 +262,7 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:
 
 - 기능을 수정하는 동안에는 관련 테스트를 먼저 실행하고, 작업을 마치기 전에는 전체 테스트를 실행한다.
 - 실패한 테스트를 삭제하거나 건너뛰는 대신 원인을 확인해 코드 또는 테스트를 수정한다.
+- API 엔드포인트나 스키마를 변경했다면 [1.6](#16-openapiswagger-문서화)의 문서 확인 절차를 함께 수행한다.
 - 실행 명령은 [`docs/conventions/testing.md`](docs/conventions/testing.md)에 있다.
 - 린트는 [2.2](#22-린터-및-포매터)를 따른다.
 
