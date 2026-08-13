@@ -11,6 +11,23 @@ from app.core.config import settings
 
 APP_LOGGER_NAME = "app"
 
+PROVIDER_LOGGER_NAMES = ("openai", "httpx", "httpcore")
+"""LLM provider 호출에 관여하는 라이브러리 로거 이름."""
+
+PROVIDER_LOG_LEVEL = "WARNING"
+
+
+def _provider_loggers() -> dict[str, Any]:
+    """provider 라이브러리 로거의 레벨을 고정하는 선언을 만든다.
+
+    이 라이브러리들은 DEBUG에서 요청·응답 본문을 그대로 남기므로, `LOG_LEVEL`을
+    낮춰도 프롬프트와 개인정보가 로그로 새지 않게 레벨을 따로 묶어 둔다.
+    """
+    return {
+        name: {"level": PROVIDER_LOG_LEVEL, "propagate": True}
+        for name in PROVIDER_LOGGER_NAMES
+    }
+
 
 def _logging_config(level: str) -> dict[str, Any]:
     """앱 로거를 표준 출력에 연결하는 `dictConfig` 설정을 만든다."""
@@ -31,7 +48,10 @@ def _logging_config(level: str) -> dict[str, Any]:
         # 핸들러를 앱 로거가 아닌 루트에만 두고 전파시켜야, 로그를 가로채는
         # 다른 루트 핸들러(테스트의 caplog 등)도 같은 기록을 볼 수 있다.
         "root": {"level": "WARNING", "handlers": ["console"]},
-        "loggers": {APP_LOGGER_NAME: {"level": level, "propagate": True}},
+        "loggers": {
+            APP_LOGGER_NAME: {"level": level, "propagate": True},
+            **_provider_loggers(),
+        },
     }
 
 
