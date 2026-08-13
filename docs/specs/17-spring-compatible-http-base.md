@@ -72,8 +72,8 @@ API 전체가 공유하는 HTTP 기반 계약 — 경로, 공통 스키마, 헤�
 
 - 제목이 공백뿐인 항목은 버린다.
 - 제목의 `strip + 소문자` 결과가 같으면 첫 항목만 남긴다(순서 유지).
-- `importance`가 1~3 밖이면 null, `estimatedMinutes`가 0 이하면 null,
-  `reminderMinutesBefore`가 허용값 밖이면 null로 바꾼다.
+- `importance`가 1~3 밖이면 null, `reminderMinutesBefore`가 허용값 밖이면 null로 바꾼다.
+- `estimatedMinutes`는 소수점을 버려 정수로 만든 뒤, 0 이하면 null로 바꾼다.
 - 빈 문자열 `memo`·`dueDate`·`dueTime`은 null로 바꾼다.
 
 기능별 고정 규칙(어떤 필드가 항상 null인지 등)은 각 기능 명세에서 정한다.

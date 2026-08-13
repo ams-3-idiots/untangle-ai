@@ -106,6 +106,18 @@ def test_normalize_keeps_integral_float_estimated_minutes():
     assert drafts[0].estimated_minutes == 90
 
 
+def test_normalize_truncates_fractional_estimated_minutes():
+    drafts = normalize_task_drafts([{"title": "발표 준비", "estimated_minutes": 30.5}])
+
+    assert drafts[0].estimated_minutes == 30
+
+
+def test_normalize_nullifies_estimated_minutes_truncated_to_zero():
+    drafts = normalize_task_drafts([{"title": "발표 준비", "estimated_minutes": 0.5}])
+
+    assert drafts[0].estimated_minutes is None
+
+
 def test_normalize_nullifies_disallowed_reminder_minutes():
     drafts = normalize_task_drafts(
         [{"title": "발표 준비", "reminder_minutes_before": 15}]

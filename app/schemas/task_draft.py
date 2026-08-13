@@ -1,5 +1,6 @@
 """덤프 `tasks[]`와 쪼개기 `items[]`가 공유하는 할 일 제안 DTO와 정규화."""
 
+import math
 from collections.abc import Iterable, Mapping
 from datetime import date
 from typing import Annotated, Any, Literal
@@ -95,7 +96,11 @@ def _allowed_or_none(value: Any, allowed: frozenset[int]) -> Any:
 
 
 def _positive_or_none(value: Any) -> Any:
-    """0 이하이거나 수가 아닌 예상 소요 시간을 단서 없음(null)으로 바꾼다."""
+    """예상 소요 시간의 소수점을 버리고, 0 이하이거나 수가 아니면 null로 바꾼다."""
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return value if value > 0 else None
+    # inf·nan은 int()가 예외를 던지므로 정수로 바꾸기 전에 걸러낸다.
+    if not math.isfinite(value):
+        return None
+    minutes = int(value)
+    return minutes if minutes > 0 else None
