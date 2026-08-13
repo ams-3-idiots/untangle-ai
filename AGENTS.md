@@ -201,7 +201,7 @@ API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenA
   `min_length` 같은 `Field` 제약은 문서에 자동 반영되므로 설명 문구로 반복하지 않는다.
   discriminated union 응답은 하위 DTO마다 예시를 하나씩 둬야 모든 경우가 문서에 보인다.
 - **오류 응답**: 도메인 예외는 핸들러가 JSON으로 바꾸므로 FastAPI가 자동 문서화하지 못한다.
-  `DomainError` 하위 클래스는 `status_code`·`code`와 함께 문서에 노출할
+  `DomainError` 하위 클래스는 `status_code`·`title`과 함께 문서에 노출할
   `description`을 재정의한다. docstring은 코드를 읽는 개발자용으로 분리 유지한다.
   엔드포인트는 자신이 발생시킬 수 있는 예외만 `error_responses()`에 넘겨 `responses`로 선언한다.
 - **422 도메인 예외 추가 금지**: [1.3](#13-데이터-흐름과-책임)의 규칙대로 도메인 예외에 `422`를 쓰지 않는다.
