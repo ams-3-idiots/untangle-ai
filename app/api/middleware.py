@@ -18,9 +18,11 @@ class RequestIdMiddleware:
     """요청의 `X-Request-Id`를 검증·생성해 요청 상태·응답 헤더·서버 로그에 싣는다."""
 
     def __init__(self, app: ASGIApp) -> None:
+        """감쌀 다음 ASGI 앱을 받는다."""
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """HTTP 요청만 처리하고, 나머지 scope는 손대지 않고 그대로 넘긴다."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -30,6 +32,7 @@ class RequestIdMiddleware:
         response_started = False
 
         async def send_with_request_id(message: Message) -> None:
+            """응답이 시작될 때 헤더에 요청 ID를 넣고 같은 값을 로그에 남긴다."""
             nonlocal response_started
             if message["type"] == "http.response.start":
                 response_started = True
