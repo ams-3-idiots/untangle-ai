@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.exceptions.ai import AIProviderError
+from app.exceptions.ai import AI_UNAVAILABLE_MESSAGE, AIProviderError
 from app.schemas.ai import (
     BrainDumpClarificationOutput,
     BrainDumpCompletedOutput,
@@ -180,16 +180,14 @@ def test_brain_dump_returns_503_when_not_configured(
     assert response.json()["title"] == "AI service unavailable"
 
 
-def test_brain_dump_returns_502_on_provider_error(client: TestClient, fake_llm):
-    fake_llm(
-        AIProviderError("AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
-    )
+def test_brain_dump_returns_503_on_provider_error(client: TestClient, fake_llm):
+    fake_llm(AIProviderError(AI_UNAVAILABLE_MESSAGE))
 
     response = client.post("/api/v1/ai/brain-dump", json={"text": "발표 준비해야 해."})
 
-    assert response.status_code == 502
-    assert response.json()["title"] == "Bad gateway"
-    assert "가져오지 못했습니다" in response.json()["detail"]
+    assert response.status_code == 503
+    assert response.json()["title"] == "AI service unavailable"
+    assert response.json()["detail"] == AI_UNAVAILABLE_MESSAGE
 
 
 def test_task_breakdown_returns_completed_steps(client: TestClient, fake_llm):
@@ -304,6 +302,5 @@ def test_task_breakdown_rejects_steps_without_first_step(client: TestClient, fak
         "/api/v1/ai/task-breakdown", json={"goal": "이직용 포트폴리오 만들기"}
     )
 
-    assert response.status_code == 502
-    assert response.json()["title"] == "Bad gateway"
-    assert "first_step" in response.json()["detail"]
+    assert response.status_code == 503
+    assert response.json()["title"] == "AI service unavailable"

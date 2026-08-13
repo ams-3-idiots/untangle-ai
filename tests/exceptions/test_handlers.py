@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.exceptions.ai import AINotConfiguredError
+from app.exceptions.ai import AI_UNAVAILABLE_MESSAGE, AINotConfiguredError
 from app.exceptions.handlers import error_responses
 from app.main import app
 from app.schemas.error import ProblemDetail
@@ -23,7 +23,7 @@ def test_domain_error_becomes_problem_detail(
         "type": "about:blank",
         "title": "AI service unavailable",
         "status": 503,
-        "detail": "AI 기능이 설정되지 않았습니다. 관리자에게 문의해주세요.",
+        "detail": AI_UNAVAILABLE_MESSAGE,
     }
 
 

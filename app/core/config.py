@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     openai_timeout_seconds: float = 30.0
+    openai_max_output_tokens: int = 2048
 
 
 settings = Settings()
