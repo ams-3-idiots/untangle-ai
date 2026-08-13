@@ -50,7 +50,7 @@
 ```
 main → api → services → repositories → models
 
-schemas : api, services 가 참조하며, exceptions 도 공통 오류 본문(ErrorResponse)을 참조
+schemas : api, services 가 참조하며, exceptions 도 공통 오류 본문(ProblemDetail)을 참조
 exceptions : 도메인 예외와 HTTP 응답 변환을 관리한다.
              services는 도메인 예외를 참조하고, main은 예외 핸들러를 등록하며,
              api는 responses 문서화를 위해 도메인 예외와 error_responses 를 참조한다.
@@ -73,7 +73,7 @@ core    : 환경 설정(config)과 문서용 고정 문자열(openapi)을 제공
 
 - **데이터 검증**: 타입·필수값·형식은 `schemas`, 비즈니스 로직 관련 검증(중복 이메일, 권한 등)은 `services`.
 - **예외 처리**: `services`는 `exceptions`에 정의된 도메인 예외를 발생시키며 `HTTPException`을 사용하지 않는다. 도메인 예외를 HTTP 상태 코드와 응답 본문으로 변환하는 처리도 `exceptions`에서 관리하고, `main.py`는 예외 핸들러를 애플리케이션에 등록한다.
-- **도메인 예외 상태 코드**: 도메인 예외에는 `422`를 사용하지 않는다. `422`는 `schemas`에서 처리하는 요청 형식의 Pydantic 검증 실패를 나타내는 FastAPI 기본 응답으로만 사용한다. 업무 규칙 위반에는 의미에 맞는 다른 상태 코드(`400`, `404`, `409` 등)를 선택한다.
+- **도메인 예외 상태 코드**: 도메인 예외에는 `422`를 사용하지 않는다. `422`는 `schemas`에서 처리하는 요청 형식의 Pydantic 검증 실패에만 사용하며, 본문은 전역 핸들러가 ProblemDetail로 변환한다. 업무 규칙 위반에는 의미에 맞는 다른 상태 코드(`400`, `404`, `409` 등)를 선택한다.
 - **세션**: 엔진·세션 팩토리·요청 단위 주입 의존성을 모두 `db/session.py`에 둔다.
   엔드포인트는 `DbSession` 별칭으로 세션을 받고, `services`는 세션을 인자로만 받는다.
   요청 밖(배치·CLI·테스트)에서는 `with SessionLocal() as db:` 로 직접 연다.
@@ -185,7 +185,7 @@ API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenA
 | `main.py` | 앱 제목·설명·태그 목록을 `FastAPI(...)` 인자로 조립 |
 | `core/openapi.py` | 문서에 그대로 노출되는 고정 문자열 `API_DESCRIPTION`·`OPENAPI_TAGS` |
 | `api/` 엔드포인트 | `summary`·docstring·`response_model`·`status_code`·`responses` |
-| `schemas/` | 필드 `description`과 요청 예시, 공통 오류 본문 `ErrorResponse` |
+| `schemas/` | 필드 `description`과 요청 예시, 공통 오류 본문 `ProblemDetail` |
 | `exceptions/` | 예외별 `description`, `responses` 변환(`error_responses`) |
 
 - **태그**: 도메인 단위로만 만들고 엔드포인트마다 새 태그를 만들지 않는다.
@@ -205,8 +205,9 @@ API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenA
   `description`을 재정의한다. docstring은 코드를 읽는 개발자용으로 분리 유지한다.
   엔드포인트는 자신이 발생시킬 수 있는 예외만 `error_responses()`에 넘겨 `responses`로 선언한다.
 - **422 도메인 예외 추가 금지**: [1.3](#13-데이터-흐름과-책임)의 규칙대로 도메인 예외에 `422`를 쓰지 않는다.
-  `422`를 선언하면 FastAPI가 자동 문서화하는 요청 검증 오류 응답을 덮어쓰고
-  `error_responses()`에 특례가 필요해진다.
+  요청 검증 실패 `422`는 전역 핸들러가 ProblemDetail로 변환하므로, 요청 본문을
+  받는 엔드포인트는 `VALIDATION_ERROR_RESPONSES`를 `responses`에 합쳐
+  FastAPI 기본 `422` 문서를 실제 본문 형식으로 대체한다.
 
 [1.3](#13-데이터-흐름과-책임)의 사용자 생성 엔드포인트에 문서 메타데이터를 붙이면:
 
