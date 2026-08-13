@@ -106,7 +106,7 @@ def test_brain_dump_rejects_blank_text(client: TestClient):
     response = client.post("/api/v1/ai/brain-dump", json={"text": "   "})
 
     assert response.status_code == 422
-    assert any("text" in error["loc"] for error in response.json()["detail"])
+    assert "text" in response.json()["detail"]
 
 
 def test_brain_dump_rejects_answer_with_skipped_true(client: TestClient):
@@ -126,7 +126,7 @@ def test_brain_dump_rejects_answer_with_skipped_true(client: TestClient):
     )
 
     assert response.status_code == 422
-    assert any("clarifications" in error["loc"] for error in response.json()["detail"])
+    assert "clarifications" in response.json()["detail"]
 
 
 def test_brain_dump_rejects_disallowed_key(client: TestClient):
@@ -146,7 +146,7 @@ def test_brain_dump_rejects_disallowed_key(client: TestClient):
     )
 
     assert response.status_code == 422
-    assert any("key" in error["loc"] for error in response.json()["detail"])
+    assert "key" in response.json()["detail"]
 
 
 def test_brain_dump_rejects_duplicate_key(client: TestClient, fake_llm):
@@ -165,7 +165,8 @@ def test_brain_dump_rejects_duplicate_key(client: TestClient, fake_llm):
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_clarification_state"
+    assert response.json()["title"] == "Bad request"
+    assert "구체화 답변" in response.json()["detail"]
 
 
 def test_brain_dump_returns_503_when_not_configured(
@@ -176,7 +177,7 @@ def test_brain_dump_returns_503_when_not_configured(
     response = client.post("/api/v1/ai/brain-dump", json={"text": "발표 준비해야 해."})
 
     assert response.status_code == 503
-    assert response.json()["code"] == "ai_not_configured"
+    assert response.json()["title"] == "AI service unavailable"
 
 
 def test_brain_dump_returns_502_on_provider_error(client: TestClient, fake_llm):
@@ -187,7 +188,8 @@ def test_brain_dump_returns_502_on_provider_error(client: TestClient, fake_llm):
     response = client.post("/api/v1/ai/brain-dump", json={"text": "발표 준비해야 해."})
 
     assert response.status_code == 502
-    assert response.json()["code"] == "ai_provider_error"
+    assert response.json()["title"] == "Bad gateway"
+    assert "가져오지 못했습니다" in response.json()["detail"]
 
 
 def test_task_breakdown_returns_completed_steps(client: TestClient, fake_llm):
@@ -261,7 +263,7 @@ def test_task_breakdown_rejects_long_goal(client: TestClient):
     response = client.post("/api/v1/ai/task-breakdown", json={"goal": "가" * 101})
 
     assert response.status_code == 422
-    assert any("goal" in error["loc"] for error in response.json()["detail"])
+    assert "goal" in response.json()["detail"]
 
 
 def test_task_breakdown_returns_503_when_not_configured(
@@ -274,7 +276,7 @@ def test_task_breakdown_returns_503_when_not_configured(
     )
 
     assert response.status_code == 503
-    assert response.json()["code"] == "ai_not_configured"
+    assert response.json()["title"] == "AI service unavailable"
 
 
 def test_task_breakdown_rejects_clarifications_over_limit(client: TestClient, fake_llm):
@@ -291,7 +293,8 @@ def test_task_breakdown_rejects_clarifications_over_limit(client: TestClient, fa
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_clarification_state"
+    assert response.json()["title"] == "Bad request"
+    assert "구체화 답변" in response.json()["detail"]
 
 
 def test_task_breakdown_rejects_steps_without_first_step(client: TestClient, fake_llm):
@@ -302,4 +305,5 @@ def test_task_breakdown_rejects_steps_without_first_step(client: TestClient, fak
     )
 
     assert response.status_code == 502
-    assert response.json()["code"] == "invalid_ai_response"
+    assert response.json()["title"] == "Bad gateway"
+    assert "first_step" in response.json()["detail"]

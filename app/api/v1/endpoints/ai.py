@@ -8,7 +8,7 @@ from app.exceptions.ai import (
     InvalidAIResponseError,
     InvalidClarificationStateError,
 )
-from app.exceptions.handlers import error_responses
+from app.exceptions.handlers import VALIDATION_ERROR_RESPONSES, error_responses
 from app.schemas.ai import (
     BrainDumpRequest,
     BrainDumpResponse,
@@ -19,12 +19,15 @@ from app.services import ai_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
-AI_ERROR_RESPONSES = error_responses(
-    InvalidClarificationStateError,
-    AIProviderError,
-    InvalidAIResponseError,
-    AINotConfiguredError,
-)
+AI_ERROR_RESPONSES = {
+    **error_responses(
+        InvalidClarificationStateError,
+        AIProviderError,
+        InvalidAIResponseError,
+        AINotConfiguredError,
+    ),
+    **VALIDATION_ERROR_RESPONSES,
+}
 
 
 @router.post(
