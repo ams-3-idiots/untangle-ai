@@ -234,7 +234,7 @@ def _normalize_breakdown(
 def _build_response[ResponseT: BaseModel](
     response_type: type[ResponseT], **fields: object
 ) -> ResponseT:
-    """모델 출력이 응답 DTO 제약을 어기면 invalid_ai_response로 바꾼다."""
+    """모델 출력이 응답 DTO 제약을 어기면 `InvalidAIResponseError`로 바꾼다."""
     try:
         return response_type(**fields)
     except ValidationError as exc:
