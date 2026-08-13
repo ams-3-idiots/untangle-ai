@@ -78,10 +78,14 @@ def test_unhandled_error_response_includes_request_id(fake_llm):
 def test_request_id_is_used_in_server_log(
     client: TestClient, caplog: pytest.LogCaptureFixture
 ):
-    with caplog.at_level(logging.INFO, logger="app.request"):
-        client.get("/api/v1/health", headers={"X-Request-Id": "log-trace-1"})
+    # 레벨을 강제로 올리지 않아야 앱의 로깅 설정이 실제로 동작하는지 확인된다.
+    client.get("/api/v1/health", headers={"X-Request-Id": "log-trace-1"})
 
     assert any("log-trace-1" in record.getMessage() for record in caplog.records)
+
+
+def test_app_logger_emits_info_records():
+    assert logging.getLogger("app.request").isEnabledFor(logging.INFO)
 
 
 def test_request_without_authorization_succeeds(client: TestClient, fake_llm):
