@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     openai_timeout_seconds: float = 30.0
+    session_ttl_seconds: float = 1800.0
+    idempotency_ttl_seconds: float = 1800.0
+    max_sessions: int = 1000
+    max_session_turns: int = 50
+    max_session_conversation_chars: int = 50000
+    max_idempotency_entries: int = 1000
+    rate_limit_requests: int = 60
+    rate_limit_window_seconds: float = 60.0
 
 
 settings = Settings()
