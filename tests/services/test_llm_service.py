@@ -37,11 +37,33 @@ def _install_client(monkeypatch: pytest.MonkeyPatch, parse) -> dict:
     return recorded
 
 
-def _generate() -> object:
+def _generate(input_text: str = "{}") -> object:
     """고정 인자로 generate_structured를 호출한다."""
     return llm_service.generate_structured(
-        instructions="지시문", input_text="{}", output_type=BrainDumpModelOutput
+        instructions="지시문", input_text=input_text, output_type=BrainDumpModelOutput
     )
+
+
+def _completed(title: str) -> BrainDumpCompletedOutput:
+    """제목 하나짜리 완료 상태의 모델 출력을 만든다."""
+    return BrainDumpCompletedOutput.model_validate(
+        {
+            "status": "completed",
+            "result": {"candidates": [{"title": title, "memo": ""}]},
+        }
+    )
+
+
+def _record_parse_kwargs(monkeypatch: pytest.MonkeyPatch, output: object) -> dict:
+    """SDK가 받은 인자를 기록하는 클라이언트를 주입한다."""
+    parse_kwargs: dict = {}
+
+    def parse(**kwargs: object):
+        parse_kwargs.update(kwargs)
+        return SimpleNamespace(output_parsed=SimpleNamespace(response=output))
+
+    _install_client(monkeypatch, parse)
+    return parse_kwargs
 
 
 def test_generate_structured_requires_api_key(monkeypatch: pytest.MonkeyPatch):
@@ -110,26 +132,79 @@ def test_generate_structured_wires_settings_and_prompt(
     expected = BrainDumpCompletedOutput.model_validate(
         {"status": "completed", "result": {"candidates": []}}
     )
-    parse_kwargs: dict = {}
-
-    def parse(**kwargs: object):
-        parse_kwargs.update(kwargs)
-        return SimpleNamespace(output_parsed=SimpleNamespace(response=expected))
-
-    client_kwargs = _install_client(monkeypatch, parse)
+    parse_kwargs = _record_parse_kwargs(monkeypatch, expected)
 
     # 실행
     _generate()
 
     # 확인
-    assert client_kwargs["client"] == {
-        "api_key": "test-key",
-        "timeout": settings.openai_timeout_seconds,
-    }
     assert parse_kwargs["model"] == "gpt-4.1-mini"
     assert parse_kwargs["instructions"] == "지시문"
     assert parse_kwargs["input"] == "{}"
+    assert parse_kwargs["max_output_tokens"] == settings.openai_max_output_tokens
     text_format = parse_kwargs["text_format"]
     assert text_format.model_fields["response"].annotation == BrainDumpModelOutput
     # SDK가 schema name으로 보내는 __name__이 OpenAI 제약을 지키는지 확인한다.
     assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", text_format.__name__)
+
+
+def test_generate_structured_wires_client_settings(
+    configured, monkeypatch: pytest.MonkeyPatch
+):
+    expected = BrainDumpCompletedOutput.model_validate(
+        {"status": "completed", "result": {"candidates": []}}
+    )
+    client_kwargs = _install_client(
+        monkeypatch,
+        lambda **kwargs: SimpleNamespace(
+            output_parsed=SimpleNamespace(response=expected)
+        ),
+    )
+
+    _generate()
+
+    assert client_kwargs["client"] == {
+        "api_key": "test-key",
+        "timeout": settings.openai_timeout_seconds,
+    }
+
+
+def test_generate_structured_masks_personal_data_before_sending(
+    configured, monkeypatch: pytest.MonkeyPatch
+):
+    parse_kwargs = _record_parse_kwargs(monkeypatch, _completed("연락하기"))
+
+    _generate(input_text='{"text": "010-1234-5678로 연락"}')
+
+    assert "010-1234-5678" not in parse_kwargs["input"]
+    assert "[전화1]" in parse_kwargs["input"]
+
+
+def test_generate_structured_restores_personal_data_in_output(
+    configured, monkeypatch: pytest.MonkeyPatch
+):
+    # 준비: 모델이 마스킹 표기를 그대로 실어 응답한 상황이다.
+    _record_parse_kwargs(monkeypatch, _completed("[전화1]에게 연락하기"))
+
+    output = _generate(input_text='{"text": "010-1234-5678로 연락"}')
+
+    assert output.result.candidates[0].title == "010-1234-5678에게 연락하기"
+
+
+def test_generate_structured_log_excludes_input_and_prompt(
+    configured, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    def parse(**kwargs: object):
+        raise openai.APIConnectionError(
+            request=httpx.Request("POST", "https://api.openai.com/v1/responses")
+        )
+
+    _install_client(monkeypatch, parse)
+
+    with pytest.raises(AIProviderError):
+        _generate(input_text='{"text": "010-1234-5678로 연락"}')
+
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    assert "APIConnectionError" in logged
+    assert "010-1234-5678" not in logged
+    assert "지시문" not in logged

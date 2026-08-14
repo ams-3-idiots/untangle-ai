@@ -1,18 +1,25 @@
-"""단일 provider(OpenAI)에 대한 얇은 structured output 호출을 제공한다."""
+"""단일 provider(OpenAI)에 대한 structured output 호출 경계.
+
+LLM으로 나가는 입력의 개인정보를 가리고, 모델 응답의 문자열을 원문으로 되돌린
+검증된 DTO만 돌려준다. provider SDK 객체와 모델 원문은 밖으로 내보내지 않는다.
+"""
+
+import logging
 
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.exceptions.ai import (
+    AI_UNAVAILABLE_MESSAGE,
     AINotConfiguredError,
     AIProviderError,
     InvalidAIResponseError,
 )
+from app.services import masking_service
+from app.services.masking_service import MaskingContext
 
-_NOT_CONFIGURED_MESSAGE = "AI 기능이 설정되지 않았습니다. 관리자에게 문의해주세요."
-_PROVIDER_ERROR_MESSAGE = "AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해주세요."
-_INVALID_RESPONSE_MESSAGE = "AI 응답을 처리하지 못했습니다. 잠시 후 다시 시도해주세요."
+logger = logging.getLogger("app.llm")
 
 
 class _StructuredOutput[OutputT](BaseModel):
@@ -24,10 +31,12 @@ class _StructuredOutput[OutputT](BaseModel):
 def generate_structured[OutputT](
     instructions: str, input_text: str, output_type: type[OutputT]
 ) -> OutputT:
-    """OpenAI 호출 결과를 모델 출력 DTO로 검증해 반환한다."""
+    """마스킹한 입력으로 OpenAI를 호출하고 원문을 복원한 출력 DTO를 반환한다."""
     if not settings.openai_api_key or not settings.openai_model:
-        raise AINotConfiguredError(_NOT_CONFIGURED_MESSAGE)
+        logger.error("llm call rejected: provider not configured")
+        raise AINotConfiguredError(AI_UNAVAILABLE_MESSAGE)
 
+    context = masking_service.new_context()
     client = OpenAI(
         api_key=settings.openai_api_key,
         timeout=settings.openai_timeout_seconds,
@@ -40,15 +49,41 @@ def generate_structured[OutputT](
         result = client.responses.parse(
             model=settings.openai_model,
             instructions=instructions,
-            input=input_text,
+            input=context.mask(input_text),
             text_format=output_format,
+            max_output_tokens=settings.openai_max_output_tokens,
         )
     except OpenAIError as exc:
-        raise AIProviderError(_PROVIDER_ERROR_MESSAGE) from exc
+        logger.warning("llm call failed: %s", type(exc).__name__)
+        raise AIProviderError(AI_UNAVAILABLE_MESSAGE) from exc
     except ValueError as exc:
         # pydantic ValidationError와 JSONDecodeError 모두 ValueError를 상속한다.
-        raise InvalidAIResponseError(_INVALID_RESPONSE_MESSAGE) from exc
+        logger.warning("llm response rejected: %s", type(exc).__name__)
+        raise InvalidAIResponseError(AI_UNAVAILABLE_MESSAGE) from exc
 
     if result.output_parsed is None:
-        raise InvalidAIResponseError(_INVALID_RESPONSE_MESSAGE)
-    return result.output_parsed.response
+        logger.warning("llm response rejected: no parsed output")
+        raise InvalidAIResponseError(AI_UNAVAILABLE_MESSAGE)
+
+    output = result.output_parsed.response
+    if isinstance(output, BaseModel):
+        _restore(output, context)
+    return output
+
+
+def _restore(model: BaseModel, context: MaskingContext) -> None:
+    """모델 출력에 담긴 모든 문자열의 마스킹 표기를 원문으로 되돌린다."""
+    for name in type(model).model_fields:
+        setattr(model, name, _restored(getattr(model, name), context))
+
+
+def _restored(value: object, context: MaskingContext) -> object:
+    """문자열은 되돌리고 중첩된 모델과 목록은 따라 들어간다."""
+    if isinstance(value, BaseModel):
+        _restore(value, context)
+        return value
+    if isinstance(value, list):
+        return [_restored(item, context) for item in value]
+    if isinstance(value, str):
+        return context.unmask(value)
+    return value

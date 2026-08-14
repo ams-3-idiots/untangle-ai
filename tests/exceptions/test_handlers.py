@@ -1,13 +1,23 @@
 """도메인 예외와 요청 검증 실패가 ProblemDetail 응답으로 변환되는지 검증한다."""
 
+import json
+
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.exceptions.ai import AINotConfiguredError
-from app.exceptions.handlers import error_responses
+from app.exceptions.ai import AINotConfiguredError, AI_UNAVAILABLE_MESSAGE
+from app.exceptions.handlers import domain_error_handler, error_responses
+from app.exceptions.limit import ProtectionLimitError
+from app.exceptions.session import SessionNotFoundError
 from app.main import app
 from app.schemas.error import ProblemDetail
+
+
+def _request() -> Request:
+    """핸들러가 쓰지 않는 요청 자리를 채울 최소 객체를 만든다."""
+    return Request({"type": "http", "method": "POST", "path": "/", "headers": []})
 
 
 def test_domain_error_becomes_problem_detail(
@@ -23,7 +33,7 @@ def test_domain_error_becomes_problem_detail(
         "type": "about:blank",
         "title": "AI service unavailable",
         "status": 503,
-        "detail": "AI 기능이 설정되지 않았습니다. 관리자에게 문의해주세요.",
+        "detail": AI_UNAVAILABLE_MESSAGE,
     }
 
 
@@ -95,6 +105,34 @@ def test_unparseable_json_detail_has_no_field_path(client: TestClient):
 
     assert response.status_code == 422
     assert response.json()["detail"] == "JSON decode error"
+
+
+def test_session_not_found_becomes_404_problem_detail():
+    response = domain_error_handler(
+        _request(), SessionNotFoundError("ai session not found: cace6837")
+    )
+
+    assert response.status_code == 404
+    assert json.loads(response.body) == {
+        "type": "about:blank",
+        "title": "Not found",
+        "status": 404,
+        "detail": "ai session not found: cace6837",
+    }
+
+
+def test_protection_limit_becomes_429_problem_detail():
+    response = domain_error_handler(
+        _request(), ProtectionLimitError("too many requests")
+    )
+
+    assert response.status_code == 429
+    assert json.loads(response.body) == {
+        "type": "about:blank",
+        "title": "Too many requests",
+        "status": 429,
+        "detail": "too many requests",
+    }
 
 
 def test_error_responses_declares_problem_media_type():
