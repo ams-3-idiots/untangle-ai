@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.exceptions.ai import AINotConfiguredError
+from app.exceptions.ai import AINotConfiguredError, AI_UNAVAILABLE_MESSAGE
 from app.exceptions.handlers import domain_error_handler, error_responses
 from app.exceptions.limit import ProtectionLimitError
 from app.exceptions.session import SessionNotFoundError
@@ -33,7 +33,7 @@ def test_domain_error_becomes_problem_detail(
         "type": "about:blank",
         "title": "AI service unavailable",
         "status": 503,
-        "detail": "AI 기능이 설정되지 않았습니다. 관리자에게 문의해주세요.",
+        "detail": AI_UNAVAILABLE_MESSAGE,
     }
 
 
