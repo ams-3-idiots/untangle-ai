@@ -16,9 +16,22 @@ import app.models  # noqa: F401
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
-from app.services import llm_service
+from app.services import (
+    idempotency_service,
+    llm_service,
+    rate_limit_service,
+    session_service,
+)
 
 TEST_DATABASE_URL = "sqlite://"  # 파일을 만들지 않는 인메모리 DB
+
+
+@pytest.fixture(autouse=True)
+def reset_process_state() -> None:
+    """프로세스 메모리에 남은 세션·멱등 응답·요청 기록을 테스트마다 비운다."""
+    session_service.reset_sessions()
+    idempotency_service.reset_idempotency()
+    rate_limit_service.reset_rate_limit()
 
 
 @pytest.fixture

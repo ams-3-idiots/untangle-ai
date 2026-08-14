@@ -26,7 +26,7 @@
 | --- | --- |
 | 테스트를 작성·수정하거나 테스트 구조를 정할 때 | [`docs/conventions/testing.md`](docs/conventions/testing.md) |
 | 브랜치를 만들 때, 커밋할 때, PR을 올릴 때 | [`docs/conventions/git.md`](docs/conventions/git.md) |
-| GitHub 이슈에 연결할 명세 문서를 쓸 때 | [`docs/conventions/git.md`](docs/conventions/git.md) |
+| GitHub 이슈를 작성·수정하거나 이슈에 연결할 스펙 문서를 쓸 때 | [`docs/conventions/git.md`](docs/conventions/git.md) |
 
 ## 1. 프로젝트 구조
 
