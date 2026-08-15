@@ -58,13 +58,21 @@ def db() -> Generator[Session, None, None]:
 
 @pytest.fixture
 def fake_llm(monkeypatch: pytest.MonkeyPatch):
-    """llm_service가 실제 OpenAI 대신 미리 정한 출력이나 예외를 내게 바꾼다."""
+    """llm_service가 실제 OpenAI 대신 미리 정한 출력이나 예외를 내게 바꾼다.
 
-    def install(output: object) -> None:
+    출력을 여러 개 넘기면 턴마다 차례로 내보내고, 마지막 출력은 이후 호출에서 반복한다.
+    """
+
+    def install(*outputs: object) -> list[dict[str, str]]:
+        pending = list(outputs)
+        calls: list[dict[str, str]] = []
+
         # 실제 함수와 같은 시그니처로 선언해 호출부의 인자 드리프트를 잡는다.
         def fake_generate_structured(
             instructions: str, input_text: str, output_type: type
         ) -> object:
+            calls.append({"instructions": instructions, "input_text": input_text})
+            output = pending.pop(0) if len(pending) > 1 else pending[0]
             if isinstance(output, Exception):
                 raise output
             assert isinstance(output, output_type)
@@ -73,6 +81,7 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(
             llm_service, "generate_structured", fake_generate_structured
         )
+        return calls
 
     return install
 
