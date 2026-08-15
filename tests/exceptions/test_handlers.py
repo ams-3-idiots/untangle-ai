@@ -7,7 +7,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.exceptions.ai import AINotConfiguredError, AI_UNAVAILABLE_MESSAGE
+from app.exceptions.ai import AI_UNAVAILABLE_MESSAGE, AINotConfiguredError
 from app.exceptions.handlers import domain_error_handler, error_responses
 from app.exceptions.limit import ProtectionLimitError
 from app.exceptions.session import SessionNotFoundError
