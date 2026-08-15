@@ -9,7 +9,6 @@ dependencies = [
     "httpx>=0.28.1",
     "openai>=2.53.0",
     "pydantic-settings>=2.7",
-    "sqlalchemy>=2.0.51",
 ]
 
 [dependency-groups]

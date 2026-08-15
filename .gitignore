@@ -7,10 +7,6 @@ __pycache__/
 # 환경 변수
 .env
 
-# 로컬 SQLite DB
-*.db
-*.sqlite3
-
 # 도구 캐시
 .pytest_cache/
 .ruff_cache/
