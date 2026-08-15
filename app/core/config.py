@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     app_name: str = "untangle-ai"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
-    database_url: str = "sqlite:///./untangle.db"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     openai_timeout_seconds: float = 30.0

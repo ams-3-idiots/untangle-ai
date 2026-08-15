@@ -5,9 +5,8 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import ai, ai_session, health
+from app.api.v1.endpoints import ai_session, health
 
 api_router = APIRouter()
 api_router.include_router(ai_session.router)
-api_router.include_router(ai.router)
 api_router.include_router(health.router)
