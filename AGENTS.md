@@ -37,27 +37,25 @@
 | `app/main.py` | 앱 시작점 |
 | `app/api/` | HTTP 엔드포인트 |
 | `app/services/` | 비즈니스 로직 |
-| `app/repositories/` | DB 조회·저장 |
-| `app/models/` | DB 테이블 정의 |
 | `app/schemas/` | 요청·응답 형식 |
 | `app/exceptions/` | 도메인 예외와 HTTP 오류 변환 |
-| `app/db/` | DB 연결과 세션 |
 | `app/core/` | 환경 설정과 문서용 고정 문자열 |
 | `tests/` | API와 비즈니스 로직 테스트 |
+
+영구 저장소를 쓰지 않는 서버라 DB 레이어(`models`·`repositories`·`db`)를 두지 않는다.
+요청 사이에 유지해야 하는 상태는 `services`가 프로세스 안에서 직접 관리한다.
 
 ### 1.2 의존 방향
 
 ```
-main → api → services → repositories → models
+main → api → services
 
 schemas : api, services 가 참조하며, exceptions 도 공통 오류 본문(ProblemDetail)을 참조
 exceptions : 도메인 예외와 HTTP 응답 변환을 관리한다.
              services는 도메인 예외를 참조하고, main은 예외 핸들러를 등록하며,
              api는 responses 문서화를 위해 도메인 예외와 error_responses 를 참조한다.
-db      : 엔진·세션 팩토리·세션 주입 의존성과 Base 를 제공.
-          api(세션 주입), models(Base 상속) 가 참조하며, db 는 다른 레이어를 참조하지 않는다.
 core    : 환경 설정(config)과 문서용 고정 문자열(openapi)을 제공.
-          main·db·services 가 참조하며, core 는 다른 레이어를 참조하지 않는다.
+          main·services 가 참조하며, core 는 다른 레이어를 참조하지 않는다.
 ```
 - **의존 방향이 어긋나는 코드는 절대 작성하지 않습니다.**
 
@@ -65,87 +63,44 @@ core    : 환경 설정(config)과 문서용 고정 문자열(openapi)을 제공
 
 ```
 요청 → endpoint  : schemas 로 형식 검증
-     → service   : 업무 규칙 판단, 트랜잭션 경계
-     → repository: 쿼리 실행 (flush 까지)
-     → model / DB
+     → service   : 업무 규칙 판단, 상태 보관과 외부 호출
 응답 ← endpoint  : services가 반환한 schemas DTO를 response_model로 직렬화
 ```
 
 - **데이터 검증**: 타입·필수값·형식은 `schemas`, 비즈니스 로직 관련 검증(중복 이메일, 권한 등)은 `services`.
 - **예외 처리**: `services`는 `exceptions`에 정의된 도메인 예외를 발생시키며 `HTTPException`을 사용하지 않는다. 도메인 예외를 HTTP 상태 코드와 응답 본문으로 변환하는 처리도 `exceptions`에서 관리하고, `main.py`는 예외 핸들러를 애플리케이션에 등록한다.
 - **도메인 예외 상태 코드**: 도메인 예외에는 `422`를 사용하지 않는다. `422`는 `schemas`에서 처리하는 요청 형식의 Pydantic 검증 실패에만 사용하며, 본문은 전역 핸들러가 ProblemDetail로 변환한다. 업무 규칙 위반에는 의미에 맞는 다른 상태 코드(`400`, `404`, `409` 등)를 선택한다.
-- **세션**: 엔진·세션 팩토리·요청 단위 주입 의존성을 모두 `db/session.py`에 둔다.
-  엔드포인트는 `DbSession` 별칭으로 세션을 받고, `services`는 세션을 인자로만 받는다.
-  요청 밖(배치·CLI·테스트)에서는 `with SessionLocal() as db:` 로 직접 연다.
-  접속 정보는 설정에서 읽고 `db/session.py`에 하드코딩하지 않는다.
-  `api/dependencies.py`에는 DB 외의 요청 단위 의존성(현재 사용자, 페이지네이션 등)만 둔다.
+- **상태 보관**: 요청 사이에 유지할 상태는 전용 `services` 모듈 하나가 프로세스 안에서
+  들고 있고, 다른 레이어는 그 모듈을 통해서만 읽고 쓴다.
+  상태는 재시작·배포로 사라지므로 사라졌을 때의 응답까지 정하고 쓴다.
+  보관량 상한과 보관 시간은 설정에서 읽고 서비스에 하드코딩하지 않는다.
+  `api/dependencies.py`에는 요청 단위 의존성(현재 사용자, 페이지네이션 등)만 둔다.
+- **응답 DTO**: `services`는 내부 자료구조를 `schemas`에 정의된 응답 DTO로 변환한다.
+  엔드포인트는 서비스 내부 타입을 직접 참조하지 않고 `services`가 반환한 DTO만 반환한다.
+- **엔드포인트 선언**: 서비스가 동기로 동작하므로 엔드포인트는 `def`로 선언한다.
 
-`app/db/session.py` (import과 `_engine_options` 헬퍼 생략):
+`services/ai_session_service.py`:
 
 ```python
-"""엔진·세션 팩토리·요청 단위 세션 주입 의존성.
-
-엔드포인트는 `DbSession` 별칭으로 세션을 받고, `services`는 세션을 인자로만 받는다.
-요청 밖(배치·CLI·테스트)에서는 `with SessionLocal() as db:` 로 직접 연다.
-"""
-
-engine = create_engine(settings.database_url, **_engine_options(settings.database_url))
-
-SessionLocal = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    expire_on_commit=False,
-)
+"""AI 세션 생성과 브레인덤프의 유스케이스."""
 
 
-def get_db() -> Generator[Session, None, None]:
-    """요청 단위 DB 세션의 정리와 예외 롤백을 책임진다."""
-    db = SessionLocal()
-
-    try:
-        yield db
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-
-DbSession = Annotated[Session, Depends(get_db)]
+def create_session() -> SessionCreatedResponse:
+    """새 대화 세션을 만들어 앱이 이어서 쓸 세션 식별자를 반환한다."""
+    session = session_service.create_session()
+    return SessionCreatedResponse(session_id=session.session_id)
 ```
 
-- **트랜잭션**: 업무 판단에 따른 `commit`·`rollback`은 `services`에서 한다.
-  `repositories`는 `flush`까지만 하고 `commit`하지 않는다.
-  예외가 밖으로 전파될 때의 정리용 `rollback`과 `close`는 `get_db`가 책임진다.
-- **응답 DTO**: `services`는 `repositories`가 반환한 모델을 `schemas`에 정의된 응답 DTO로 변환한다.
-  엔드포인트는 `models`를 직접 참조하지 않고 `services`가 반환한 DTO만 반환한다.
-- **엔드포인트 선언**: 동기 세션을 쓰므로 엔드포인트는 `def`로 선언한다.
-
-`services/user_service.py`:
+`api/v1/endpoints/ai_session.py`:
 
 ```python
-"""사용자의 기본적인 crud 로직을 관리한다."""
+"""AI 세션 API 엔드포인트를 제공한다."""
 
 
-def create_user(db: Session, payload: UserCreate) -> UserRead:
-    """이메일 중복을 검사하고 새로운 사용자를 생성한다."""
-    if user_repository.get_by_email(db, payload.email):
-        raise DuplicateEmailError(payload.email)
-    user = user_repository.create(db, payload)
-    db.commit()
-    return UserRead.model_validate(user, from_attributes=True)
-```
-
-`api/v1/endpoints/user.py`:
-
-```python
-"""사용자 API 엔드포인트를 제공한다."""
-
-
-@router.post("", response_model=UserRead, status_code=201)
-def create_user(payload: UserCreate, db: DbSession) -> UserRead:
-    """이메일이 중복이면 생성하지 않고 `409`로 응답한다."""
-    return user_service.create_user(db, payload)
+@router.post("", response_model=SessionCreatedResponse, status_code=201)
+def create_ai_session() -> SessionCreatedResponse:
+    """본문 없이 호출하며, 받은 `sessionId`를 이후 요청 경로에 싣는다."""
+    return ai_session_service.create_session()
 ```
 
 ### 1.4 파일 이름 규칙
@@ -153,24 +108,21 @@ def create_user(payload: UserCreate, db: DbSession) -> UserRead:
 | 위치 | 규칙 | 예 |
 | --- | --- | --- |
 | `api/v1/endpoints/` | 도메인 단수형 | `user.py` |
-| `models/`, `schemas/` | 도메인 단수형 | `user.py` |
+| `schemas/` | 도메인 단수형 | `user.py` |
 | `services/` | `<도메인>_service.py` | `user_service.py` |
-| `repositories/` | `<도메인>_repository.py` | `user_repository.py` |
 
-- 한 도메인은 레이어마다 같은 이름 축을 유지한다: `user` → `user.py` / `user_service.py` / `user_repository.py`
+- 한 도메인은 레이어마다 같은 이름 축을 유지한다: `user` → `user.py` / `user_service.py`
 - 파일이 커지면 쪼개지 말고 같은 이름의 패키지로 승격한다: `user_service.py` → `user_service/`
 - API 버전이 올라가면 `api/v2/`를 새로 만들고 `v1`은 그대로 둔다.
 
 ### 1.5 새 기능 추가 순서
 
-1. `models/` — 테이블 정의와 Alembic 마이그레이션
-2. `schemas/` — 요청·응답 스키마
-3. `repositories/` — 쿼리
-4. `services/` — 유스케이스와 트랜잭션 경계
-5. `api/v1/endpoints/` — 엔드포인트
-6. `api/v1/router.py` — 라우터 등록
+1. `schemas/` — 요청·응답 스키마
+2. `services/` — 유스케이스와 상태 보관
+3. `api/v1/endpoints/` — 엔드포인트
+4. `api/v1/router.py` — 라우터 등록
 
-로직이 거의 없어도 5번에서 4번을 건너뛰지 않는다. 기존 레이어로 설명되지 않는 코드가 생기면 새 디렉토리를 만들기 전에 사용자에게 확인한다.
+로직이 거의 없어도 3번에서 2번을 건너뛰지 않는다. 기존 레이어로 설명되지 않는 코드가 생기면 새 디렉토리를 만들기 전에 사용자에게 확인한다.
 
 ### 1.6 OpenAPI/Swagger 문서화
 
@@ -209,22 +161,22 @@ API 명세는 손으로 쓰지 않고 FastAPI가 코드에서 생성하는 OpenA
   받는 엔드포인트는 `VALIDATION_ERROR_RESPONSES`를 `responses`에 합쳐
   FastAPI 기본 `422` 문서를 실제 본문 형식으로 대체한다.
 
-[1.3](#13-데이터-흐름과-책임)의 사용자 생성 엔드포인트에 문서 메타데이터를 붙이면:
+[1.3](#13-데이터-흐름과-책임)의 세션 생성 엔드포인트에 문서 메타데이터를 붙이면:
 
 ```python
-USER_ERROR_RESPONSES = error_responses(DuplicateEmailError)
+SESSION_ERROR_RESPONSES = error_responses(ProtectionLimitError)
 
 
 @router.post(
     "",
-    response_model=UserRead,
+    response_model=SessionCreatedResponse,
     status_code=201,
-    summary="사용자를 생성한다",
-    responses=USER_ERROR_RESPONSES,
+    summary="AI 대화 세션을 만든다",
+    responses=SESSION_ERROR_RESPONSES,
 )
-def create_user(payload: UserCreate, db: DbSession) -> UserRead:
-    """이메일이 중복이면 생성하지 않고 `409`로 응답한다."""
-    return user_service.create_user(db, payload)
+def create_ai_session() -> SessionCreatedResponse:
+    """본문 없이 호출하며, 받은 `sessionId`를 이후 요청 경로에 싣는다."""
+    return ai_session_service.create_session()
 ```
 
 API 변경 후 생성된 문서를 확인하는 절차는 [3. 작업 완료 전 확인](#3-작업-완료-전-확인)에 있다.
@@ -276,11 +228,11 @@ API 변경 후 생성된 문서를 확인하는 절차는 [3. 작업 완료 전 
 ```
 커밋 2개로 나눠 만들려고 합니다. 검토 부탁드립니다.
 
-[1/2] app/models/user.py, app/schemas/user.py
-feat: 사용자 테이블과 요청·응답 스키마 추가
+[1/2] app/schemas/user.py, app/exceptions/user.py
+feat: 사용자 요청·응답 스키마와 도메인 예외 추가
 
-- `users` 테이블을 정의한다
 - 생성·조회에 사용할 요청·응답 스키마를 추가한다
+- 이메일이 중복일 때 쓸 도메인 예외를 정의한다
 
 [2/2] app/api/v1/endpoints/user.py, app/services/user_service.py
 feat: 사용자 생성 API 엔드포인트 추가
