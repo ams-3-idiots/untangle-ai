@@ -33,11 +33,12 @@ class ConversationTurn:
 
 @dataclass
 class DecomposeState:
-    """쪼개기 대화의 시작 기록과 직전 분해 결과."""
+    """쪼개기 대화의 시작 기록과 질문 횟수, 직전 분해 결과."""
 
     target_title: str
     target_notes: str | None = None
     instruction: str | None = None
+    asked_questions: int = 0
     last_items: list[TaskDraft] | None = None
 
 
