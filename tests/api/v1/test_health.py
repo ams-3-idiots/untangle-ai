@@ -1,3 +1,5 @@
+"""헬스 체크 API의 요청과 응답을 검증한다."""
+
 from fastapi.testclient import TestClient
 
 

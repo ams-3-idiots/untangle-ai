@@ -42,6 +42,7 @@ class MaskingContext:
         """라벨을 고정한 정규식 치환 함수를 만든다."""
 
         def replace(match: re.Match[str]) -> str:
+            """찾은 개인정보를 이 요청의 마스킹 표기로 바꾼다."""
             return self._placeholder_for(match.group(), label)
 
         return replace

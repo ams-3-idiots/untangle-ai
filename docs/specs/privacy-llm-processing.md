@@ -1,6 +1,4 @@
-# 개인정보 보호와 공통 LLM 처리
-
-> 관련 GitHub Issue: [#19](https://github.com/ams-3-idiots/untangle-ai/issues/19)
+# 개인정보를 보호하는 공통 LLM 처리 방식을 정의한다
 
 ## 1. 핵심 결정
 
@@ -40,7 +38,7 @@
 ### 2.2 오류 변환
 
 다음은 모두 `503` ProblemDetail(`title: "AI service unavailable"`)로 변환한다.
-본문 형식은 `docs/specs/17-spring-compatible-http-base.md`의 공통 오류 계약을
+본문 형식은 `docs/specs/spring-compatible-http-base.md`의 공통 오류 계약을
 따른다.
 
 - provider 설정(API key 등) 누락
@@ -51,32 +49,9 @@
 `detail`은 네 경우 모두 같은 재시도 안내 문구를 쓴다.
 provider SDK 객체와 모델 원문 응답은 호출 경계 밖으로 나가지 않는다.
 
-### 2.3 설정
-
-| 설정 항목 | 환경 변수 | 기본값 |
-| --- | --- | --- |
-| API key | `OPENAI_API_KEY` | 없음 — 비어 있으면 `503` |
-| 모델 | `OPENAI_MODEL` | `gpt-4.1-mini` |
-| 호출 timeout(초) | `OPENAI_TIMEOUT_SECONDS` | 30 |
-| 최대 출력 토큰 | `OPENAI_MAX_OUTPUT_TOKENS` | 2048 |
-
-- 응답이 최대 출력 토큰에서 잘리면 파싱에 실패해 `503`이 된다.
-
-### 2.4 로그 정책
+### 2.3 로그 정책
 
 - 요청 본문·대화·프롬프트·모델 원문과 개인정보를 로그에 남기지 않는다.
 - LLM 호출·응답 실패는 예외 클래스 이름만 남긴다.
 - provider SDK 로거(`openai`·`httpx`·`httpcore`)는 `LOG_LEVEL`과 무관하게
   `WARNING`으로 고정한다.
-
-### 2.5 호환성 테스트 사례
-
-외부 OpenAI 호출 없이 fake LLM으로 검증한다.
-
-| ID | 시나리오 | 기대 결과 |
-| --- | --- | --- |
-| T-01 | provider 설정(API key 등) 누락 | `503` ProblemDetail (`title: "AI service unavailable"`) |
-| T-02 | timeout·네트워크·SDK 예외 | `503` ProblemDetail |
-| T-03 | 스키마를 벗어난 모델 응답, 사용 가능한 결과가 없는 모델 응답 | `503` ProblemDetail |
-| T-04 | 전화번호가 포함된 입력 | LLM에 전달되는 페이로드에 원문 없음(마스킹), API 응답 필드에는 원문 복원 |
-| T-05 | 오류 응답(`404`·`422`·`429`·`503`) 및 애플리케이션 로그 | 사용자 입력·대화·프롬프트·모델 원문 미포함 |

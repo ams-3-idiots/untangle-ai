@@ -2,9 +2,6 @@
 
 테스트를 작성·수정하거나 테스트 구조를 정할 때 읽는다.
 
-- 이 문서는 `AGENTS.md`의 상시 규칙 위에서 적용된다. Docstring과 주석 규칙은 [`AGENTS.md` 2.1](../../AGENTS.md#21-docstring과-주석)을 따른다.
-- 테스트를 실행하는 시점과 실패한 테스트를 다루는 원칙은 [`AGENTS.md` 3. 작업 완료 전 확인](../../AGENTS.md#3-작업-완료-전-확인)을 따른다.
-
 테스트는 기능이 의도한 대로 동작하는지 자동으로 확인하는 코드다. FastAPI의 `TestClient`로 API에 요청을 보내고, pytest의 `assert`로 실제 결과가 기대한 결과와 같은지 확인한다.
 
 ## 0. 목차
@@ -31,6 +28,8 @@ tests/
 
 - 테스트 파일 이름은 `test_`로 시작한다: `test_user.py`.
 - 테스트 함수 이름도 `test_`로 시작하고, 확인하려는 동작이 드러나게 쓴다: `test_create_user_returns_201`.
+- 테스트 함수는 이름만으로 검증할 동작이 분명하면 docstring을 반복해서 쓰지 않는다.
+  fixture와 테스트 헬퍼에는 역할을 설명하는 docstring을 작성한다.
 - 엔드포인트의 요청·응답은 `tests/api/`에서, 서비스의 업무 규칙은 `tests/services/`에서 테스트한다.
 - 서로 다른 기능을 하나의 테스트 함수에서 한꺼번에 확인하지 않는다.
 
@@ -110,5 +109,3 @@ uv run pytest
 uv run pytest tests/api/v1/test_user.py
 uv run pytest -k create_user
 ```
-
-실행 시점과 실패 처리는 [`AGENTS.md` 3. 작업 완료 전 확인](../../AGENTS.md#3-작업-완료-전-확인)을 따른다.

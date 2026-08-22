@@ -16,9 +16,11 @@ def advance(monkeypatch: pytest.MonkeyPatch) -> Callable[[float], None]:
     now = 0.0
 
     def fake_monotonic() -> float:
+        """테스트가 제어하는 현재 시각을 반환한다."""
         return now
 
     def move(seconds: float) -> None:
+        """테스트 시각을 지정한 초만큼 앞으로 옮긴다."""
         nonlocal now
         now += seconds
 
@@ -52,6 +54,7 @@ def _spawn(
     """멱등 실행을 별도 스레드에서 호출하고 결과나 오류를 모은다."""
 
     def call() -> None:
+        """멱등 실행의 결과나 오류를 공유 목록에 기록한다."""
         try:
             results.append(idempotency_service.run_idempotent(key, action))
         except Exception as error:
@@ -66,6 +69,7 @@ def _counting_action(calls: list[int]) -> Callable[[], str]:
     """호출 횟수를 기록하고 매번 다른 결과를 내는 작업을 만든다."""
 
     def action() -> str:
+        """호출을 기록하고 현재 횟수가 드러나는 결과를 반환한다."""
         calls.append(1)
         return f"결과 {len(calls)}"
 
@@ -117,6 +121,7 @@ def test_failed_action_is_not_cached():
     calls: list[int] = []
 
     def action() -> str:
+        """호출을 기록한 뒤 캐시되지 않아야 할 오류를 낸다."""
         calls.append(1)
         raise RuntimeError("실행 실패")
 

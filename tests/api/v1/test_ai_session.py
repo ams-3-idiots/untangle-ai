@@ -55,6 +55,7 @@ def counting_llm(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     def fake_generate_structured(
         instructions: str, input_text: str, output_type: type
     ) -> object:
+        """호출 횟수에 따라 구분되는 덤프 결과를 반환한다."""
         calls.append(input_text)
         return _model_output([{"title": f"할 일 {len(calls)}"}])
 

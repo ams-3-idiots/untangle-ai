@@ -18,9 +18,11 @@ def advance(monkeypatch: pytest.MonkeyPatch) -> Callable[[float], None]:
     now = 0.0
 
     def fake_monotonic() -> float:
+        """테스트가 제어하는 현재 시각을 반환한다."""
         return now
 
     def move(seconds: float) -> None:
+        """테스트 시각을 지정한 초만큼 앞으로 옮긴다."""
         nonlocal now
         now += seconds
 

@@ -22,11 +22,16 @@
 특정 시점에만 필요한 절차 지침은 `docs/conventions/`에 두고 그 시점에 읽는다.
 아래 상황에서는 **작업을 시작하기 전에 해당 문서를 읽고 그대로 따른다.**
 
+지침 문서의 의존 방향은 `AGENTS.md`에서 상황별 규약 문서로만 향하게 유지한다.
+`docs/`의 지침 문서는 `AGENTS.md`를 참조하지 않으며, 필요한 경우 `docs/` 안의
+다른 지침 문서만 참조한다.
+
 | 상황 | 문서 |
 | --- | --- |
+| `docs/` 문서를 작성·수정·삭제할 때 | [`docs/conventions/documentation.md`](docs/conventions/documentation.md) |
 | 테스트를 작성·수정하거나 테스트 구조를 정할 때 | [`docs/conventions/testing.md`](docs/conventions/testing.md) |
 | 브랜치를 만들 때, 커밋할 때, PR을 올릴 때 | [`docs/conventions/git.md`](docs/conventions/git.md) |
-| GitHub 이슈를 작성·수정하거나 이슈에 연결할 스펙 문서를 쓸 때 | [`docs/conventions/git.md`](docs/conventions/git.md) |
+| GitHub 이슈를 작성·수정할 때 | [`docs/conventions/git.md`](docs/conventions/git.md) |
 
 ## 1. 프로젝트 구조
 
@@ -235,6 +240,7 @@ API 변경 후 생성된 문서를 확인하는 절차는 [3. 작업 완료 전 
 
 - 직접 작성하는 Python 모듈은 파일의 책임과 존재 이유를 설명하는 모듈 docstring으로 시작한다. Docstring 본문은 두 줄 이하로 작성한다.
 - 모든 클래스, 함수, 메서드의 첫 문장에는 역할이나 존재 목적을 설명하는 docstring을 작성한다. Docstring 본문은 두 줄 이하로 작성하며, **코드에서 이미 명확한 동작을 그대로 반복하지 않는다.**
+- `test_`로 시작하는 테스트 함수는 이름만으로 검증할 동작이 분명하면 docstring 작성 대상에서 제외한다. fixture와 테스트 헬퍼는 역할을 설명하는 docstring을 작성한다.
 - 코드 중간의 설명용 `#` 주석은 원칙적으로 작성하지 않는다.
 - **코드만으로 파악하기 어려운 제약, 설계 결정, 예외 처리 또는 우회 방식의 이유를 협업자에게 알려야 할 때만 `#` 주석을 허용한다. 이때 코드가 무엇을 하는지가 아니라 왜 그렇게 작성했는지를 설명한다.**
 - 자동 생성 파일과 내용이 없는 `__init__.py`는 모듈 docstring 작성 대상에서 제외한다.

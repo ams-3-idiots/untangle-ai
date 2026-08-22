@@ -1,6 +1,4 @@
-# Spring 호환 공통 HTTP 기반
-
-> 관련 GitHub Issue: [#17](https://github.com/ams-3-idiots/untangle-ai/issues/17)
+# Spring과 호환되는 공통 HTTP 계약을 정의한다
 
 API 전체가 공유하는 HTTP 기반 계약 — 경로, 공통 스키마, 헤더, 오류
 응답을 확정한다.
@@ -52,21 +50,10 @@ API 전체가 공유하는 HTTP 기반 계약 — 경로, 공통 스키마, 헤�
 - `title`은 위 표의 고정 문자열을 유지한다.
 - `detail`에 사용자 입력·대화·프롬프트·모델 원문·스택 트레이스를 넣지 않는다.
 
-### 2.3 TaskDraft 공통 스키마
+### 2.3 TaskDraft 공통 규칙
 
-덤프의 `tasks[]`와 쪼개기의 `items[]`가 공유하는 할 일 제안 DTO다.
-**8개 필드는 값이 없어도 키를 생략하지 않고 `null`로 직렬화한다.**
-
-| 필드 | 타입 | 의미 (null = 단서 없음) |
-| --- | --- | --- |
-| `title` | string | 할 일 제목 — null·빈 문자열 없이 항상 비공백 |
-| `memo` | string \| null | 제목에 담지 못한 보충 메모 |
-| `importance` | int(1\|2\|3) \| null | 중요도 — 1=높음, 2=중간, 3=낮음 |
-| `estimatedMinutes` | int(>0) \| null | 예상 소요 시간(분) |
-| `dueDate` | string(`yyyy-MM-dd`) \| null | 마감 날짜 |
-| `dueTime` | string(`HH:mm`) \| null | 마감 시각 (24시간제) |
-| `reminderMinutesBefore` | int(10\|30\|60\|180\|1440) \| null | 마감 전 알림 시점(분) — null이면 알림 없음 |
-| `sourceExcerpt` | string \| null | 이 할 일이 추출된 근거 원문 일부 |
+정확한 필드와 타입은 OpenAPI를 따른다. 덤프의 `tasks[]`와 쪼개기의 `items[]`가
+공유하는 선택 필드는 값이 없어도 키를 생략하지 않고 `null`로 직렬화한다.
 
 서버는 모델 출력을 그대로 내보내지 않고 다음 정규화를 거친다.
 

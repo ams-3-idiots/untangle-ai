@@ -17,5 +17,6 @@ class DomainError(Exception):
     description: str = "도메인 규칙 위반으로 요청을 처리할 수 없다."
 
     def __init__(self, message: str) -> None:
+        """HTTP 오류 본문에 사용할 메시지를 보관한다."""
         super().__init__(message)
         self.message = message
