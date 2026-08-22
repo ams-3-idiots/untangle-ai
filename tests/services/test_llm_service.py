@@ -29,7 +29,10 @@ def _install_client(monkeypatch: pytest.MonkeyPatch, parse) -> dict:
     recorded: dict = {}
 
     class _StubClient:
+        """Responses parse 대역을 노출하는 가짜 OpenAI 클라이언트."""
+
         def __init__(self, **kwargs: object) -> None:
+            """생성 인자를 기록하고 parse 대역을 연결한다."""
             recorded["client"] = kwargs
             self.responses = SimpleNamespace(parse=parse)
 
@@ -59,6 +62,7 @@ def _record_parse_kwargs(monkeypatch: pytest.MonkeyPatch, output: object) -> dic
     parse_kwargs: dict = {}
 
     def parse(**kwargs: object):
+        """SDK 호출 인자를 기록하고 지정한 출력을 감싸 반환한다."""
         parse_kwargs.update(kwargs)
         return SimpleNamespace(output_parsed=SimpleNamespace(response=output))
 
@@ -77,6 +81,7 @@ def test_generate_structured_maps_sdk_error(
     configured, monkeypatch: pytest.MonkeyPatch
 ):
     def parse(**kwargs: object):
+        """OpenAI 연결 실패를 재현한다."""
         raise openai.APIConnectionError(
             request=httpx.Request("POST", "https://api.openai.com/v1/responses")
         )
@@ -91,6 +96,7 @@ def test_generate_structured_maps_validation_error(
     configured, monkeypatch: pytest.MonkeyPatch
 ):
     def parse(**kwargs: object):
+        """불완전한 모델 출력을 검증해 오류를 재현한다."""
         # status만 있는 불완전한 응답으로 pydantic 검증 오류를 일으킨다.
         BrainDumpCompletedOutput.model_validate({"status": "completed"})
 
@@ -195,6 +201,7 @@ def test_generate_structured_log_excludes_input_and_prompt(
     configured, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
     def parse(**kwargs: object):
+        """로그 정책을 확인할 OpenAI 연결 실패를 재현한다."""
         raise openai.APIConnectionError(
             request=httpx.Request("POST", "https://api.openai.com/v1/responses")
         )

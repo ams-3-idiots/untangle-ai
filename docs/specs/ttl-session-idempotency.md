@@ -1,6 +1,4 @@
-# TTL 인메모리 세션과 중복 요청 방지
-
-> 관련 GitHub Issue: [#18](https://github.com/ams-3-idiots/untangle-ai/issues/18)
+# TTL 인메모리 세션과 중복 요청 방지 규칙을 정의한다
 
 ## 1. 핵심 결정
 

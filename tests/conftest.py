@@ -36,6 +36,7 @@ def reset_process_state() -> None:
 
 @pytest.fixture
 def db() -> Generator[Session, None, None]:
+    """테스트마다 독립된 인메모리 DB 세션을 제공한다."""
     # StaticPool을 써야 인메모리 DB가 커넥션 하나로 유지된다.
     engine = create_engine(
         TEST_DATABASE_URL,
@@ -61,10 +62,13 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch):
     """llm_service가 실제 OpenAI 대신 미리 정한 출력이나 예외를 내게 바꾼다."""
 
     def install(output: object) -> None:
+        """다음 LLM 호출이 지정한 출력이나 예외를 내도록 설치한다."""
+
         # 실제 함수와 같은 시그니처로 선언해 호출부의 인자 드리프트를 잡는다.
         def fake_generate_structured(
             instructions: str, input_text: str, output_type: type
         ) -> object:
+            """설치할 때 받은 출력이나 예외로 OpenAI 호출을 대체한다."""
             if isinstance(output, Exception):
                 raise output
             assert isinstance(output, output_type)
@@ -79,7 +83,10 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
+    """테스트 DB를 사용하는 애플리케이션 클라이언트를 제공한다."""
+
     def override_get_db() -> Generator[Session, None, None]:
+        """요청에 테스트 DB 세션을 주입한다."""
         yield db
 
     app.dependency_overrides[get_db] = override_get_db

@@ -7,4 +7,5 @@ from app.schemas.health import HealthRead
 
 
 def check_health() -> HealthRead:
+    """서버가 요청을 처리할 수 있음을 나타내는 상태를 반환한다."""
     return HealthRead(status="ok")
